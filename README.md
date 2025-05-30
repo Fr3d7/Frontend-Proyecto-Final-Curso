@@ -48,24 +48,25 @@ To learn React, check out the [React documentation](https://reactjs.org/).
 ## 🖼️ Capturas del Sistema
 
 ### 1. Pantalla Principal
-![Pantalla Principal](../../imagenes/1.png)
+![Pantalla Principal](imagenes/1.png)
 
 ### 2. Login
-![Login](../../imagenes/2.png)
+![Login](imagenes/2.png)
 
-### 3. Registro
-![Registro](../../imagenes/3.png)
+### 3. Registro de Usuario
+![Registro](imagenes/3.png)
 
 ### 4. Lista de Proyectos
-![Proyectos](../../imagenes/4.png)
+![Proyectos](imagenes/4.png)
 
 ### 5. Épicas e Historias
-![Historias](../../imagenes/5.png)
+![Épicas](imagenes/5.png)
 
-### 6. Gantt
-![Gantt](../../imagenes/6.png)
+### 6. Cronograma - Gantt
+![Gantt](imagenes/6.png)
 
 ### 7. Kanban
-![Kanban](../../imagenes/7.png)
+![Kanban](imagenes/7.png)
+
 ---
 
