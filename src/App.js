@@ -753,13 +753,12 @@ const handleLogin = async (e) => {
 
   if (validateForm()) {
     try {
-      const response = await fetch('http://192.168.1.5:5187/api/Usuarios/login', {
+      const response = await fetch('http://localhost:5187/api/Usuarios/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           correo: formData.correo.trim().toLowerCase(),
           contrasena: formData.contrasena.trim()
-
         })
       });
 
@@ -768,11 +767,6 @@ const handleLogin = async (e) => {
       }
 
       const data = await response.json();
-      console.log('🔍 Respuesta backend:', data);
-
-      if (!data.usuario || !data.usuario.correo) {
-        throw new Error('Respuesta inesperada del servidor');
-      }
 
       setIsAuthenticated(true);
       localStorage.setItem('isAuthenticated', 'true');
@@ -780,10 +774,12 @@ const handleLogin = async (e) => {
       localStorage.setItem('currentUser', data.usuario.correo);
       setSuccessMessage('Inicio de sesión exitoso!');
     } catch (error) {
-      setLoginError(error.message);
+      console.error("❌ Error de red o servidor:", error);
+     setLoginError("No se pudo conectar con el servidor. Intenta más tarde.");
     }
   }
 };
+
 
   
   const handleRegister = async (e) => {
@@ -792,28 +788,30 @@ const handleLogin = async (e) => {
 
   if (validateForm()) {
     try {
-      const response = await fetch('http://192.168.1.5:5187/api/Usuarios', {
+      const response = await fetch('http://localhost:5187/api/Usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: formData.nombre,
-          correo: formData.correo.trim().toLowerCase(),
-          contrasena: formData.contrasena.trim()
-        })
-      });
+          body: JSON.stringify({
+            nombre: formData.nombre,
+            correo: formData.correo.trim().toLowerCase(),
+            contrasena: formData.contrasena.trim()
+          })
+        });
 
       if (!response.ok) {
         throw new Error('Error al registrar usuario');
       }
 
-      setSuccessMessage('usuario registrado exitosamente!');
+      setSuccessMessage('Usuario registrado exitosamente!');
       setFormData({ nombre: '', correo: '', contrasena: '', confirmarcontrasena: '' });
-      setIsLogin(true); // Redirige al login
+      setIsLogin(true);
     } catch (error) {
-      setErrors({ correo: error.message });
-      }
+      console.error("❌ Error de red o servidor:", error);
+     setLoginError("No se pudo conectar con el servidor. Intenta más tarde.");
     }
-  };
+  }
+};
+
 
   const handleLogout = () => {
     setIsAuthenticated(false);
