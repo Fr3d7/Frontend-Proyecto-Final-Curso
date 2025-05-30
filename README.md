@@ -45,28 +45,32 @@ To learn React, check out the [React documentation](https://reactjs.org/).
 
 ---
 
-## 🖼️ Capturas del Sistema
+## 📸 Capturas del Proyecto
 
 ### 1. Pantalla Principal
-![Pantalla Principal](imagenes/1.png)
+![Pantalla Principal](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/1.jpg)
 
 ### 2. Login
-![Login](imagenes/2.png)
+![Login](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/2.jpg)
 
-### 3. Registro de Usuario
-![Registro](imagenes/3.png)
+### 3. Registro
+![Registro](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/3.jpg)
 
 ### 4. Lista de Proyectos
-![Proyectos](imagenes/4.png)
+![Proyectos](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/4.jpg)
 
-### 5. Épicas e Historias
-![Épicas](imagenes/5.png)
+### 5. Épicas
+![Épicas](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/5.jpg)
 
 ### 6. Cronograma - Gantt
-![Gantt](imagenes/6.png)
+![Gantt](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/6.jpg)
 
 ### 7. Kanban
-![Kanban](imagenes/7.png)
+![Kanban](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/7.jpg)
+
+### 8. Dashboard
+![Dashboard](https://github.com/Fr3d7/Proyecto_Ing_Sfotware_2025/raw/main/imagenes/8.jpg)
+
 
 ---
 
