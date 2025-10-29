@@ -5,7 +5,11 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "📥 Haciendo checkout de la rama ${env.BRANCH_NAME}"
+                script {
+                    // valor por defecto si BRANCH_NAME viene vacío (pasa en jobs normales)
+                    def branch = env.BRANCH_NAME ?: "DEV"
+                    echo "📥 Haciendo checkout de la rama ${branch}"
+                }
                 checkout scm
             }
         }
@@ -13,7 +17,7 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 echo "📦 Instalando dependencias NPM..."
-                // En Windows: usamos bat, no sh
+                // En Windows usamos bat, no sh
                 bat 'npm install'
             }
         }
@@ -21,9 +25,10 @@ pipeline {
         stage('Run tests') {
             steps {
                 echo "🧪 Corriendo tests (Jest/RTL)..."
-                // --watchAll=false para que no se quede esperando en modo watch
-                // --ci para que Jest falle correctamente si hay errores
-                bat 'npm test -- --watchAll=false --ci'
+                // --watchAll=false: desactiva modo watch
+                // --ci: modo CI
+                // --passWithNoTests: no truena si todavía no hay archivos *.test.js
+                bat 'npm test -- --watchAll=false --ci --passWithNoTests'
             }
             post {
                 unsuccessful {
@@ -46,26 +51,25 @@ pipeline {
             steps {
                 echo "🔍 Enviando análisis a SonarQube..."
 
-                // Carga las variables de entorno del servidor Sonar
-                // 'sonar-local' debe existir en Jenkins > Manage Jenkins > Configure System > SonarQube Servers
+                // Usa la config de SonarQube que registraste en Jenkins (sonar-local)
                 withSonarQubeEnv('sonar-local') {
 
-                    // Inyecta el token del Sonar como variable SONAR_TOKEN
+                    // Saca el token de las credenciales seguras en Jenkins (ID: sonar-token)
                     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
 
                         script {
-                            // Obtiene la ruta del sonar-scanner que registraste en Global Tool Configuration
+                            // Herramienta sonar-scanner configurada en Global Tool Configuration
                             def scannerHome = tool 'sonar-scanner-win'
 
-                            // Ejecuta el sonar-scanner en Windows
+                            // Ejecuta el escaneo
                             bat """
                                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
                                   -Dsonar.projectKey=frontend-proyecto-final ^
                                   -Dsonar.projectName=frontend-proyecto-final ^
                                   -Dsonar.sources=src ^
                                   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                                  -Dsonar.host.url=http://localhost:9000 ^
-                                  -Dsonar.login=sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31
+                                  -Dsonar.host.url=%http://localhost:9000% ^
+                                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
                             """
                         }
                     }
@@ -76,10 +80,16 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline OK en rama ${env.BRANCH_NAME}"
+            script {
+                def branch = env.BRANCH_NAME ?: "DEV"
+                echo "✅ Pipeline OK en rama ${branch}"
+            }
         }
         failure {
-            echo "❌ Falló el pipeline en rama ${env.BRANCH_NAME}"
+            script {
+                def branch = env.BRANCH_NAME ?: "DEV"
+                echo "❌ Falló el pipeline en rama ${branch}"
+            }
         }
     }
 }
