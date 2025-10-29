@@ -60,8 +60,7 @@ pipeline {
                 withSonarQubeEnv('sonar-local') {
 
                     // Saca el token de las credenciales seguras en Jenkins (ID: sonar-token)
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                         script {
                             // Herramienta sonar-scanner configurada en Global Tool Configuration
                             def scannerHome = tool 'sonar-scanner-win'
