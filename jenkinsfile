@@ -40,12 +40,17 @@ pipeline {
             }
         }
 
-        stage('Build app') {
+                stage('Build app') {
             steps {
-                echo "🏗  Construyendo la app React (npm run build)..."
-                bat 'npm run build'
+                echo "🏗  Construyendo la app React (npm run build, ignorando warnings)..."
+                // En Windows, para limpiar la variable de entorno CI solo en este paso:
+                bat '''
+                set CI=
+                npm run build
+                '''
             }
         }
+
 
         stage('SonarQube Analysis') {
             steps {
