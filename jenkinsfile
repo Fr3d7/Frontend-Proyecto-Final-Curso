@@ -1,17 +1,17 @@
 pipeline {
   agent any
+
   options {
     timestamps()
     ansiColor('xterm')
     disableConcurrentBuilds()
+    // Evita el checkout implícito duplicado (opcional)
+    // skipDefaultCheckout(true)
   }
 
   environment {
-    // Para que CRA no trate warnings como errores
-    CI = ''
+    CI = ''              // CRA: no tratar warnings como errores
     NODE_ENV = 'production'
-    // Si vas a usar despliegue a IIS, configura esta ruta:
-    // DEPLOY_PATH = 'C:\\inetpub\\wwwroot\\miapp'
   }
 
   stages {
@@ -19,8 +19,8 @@ pipeline {
     stage('Checkout') {
       steps {
         script {
-          def branch = env.BRANCH_NAME ?: 'DEV'
-          echo "📥 Haciendo checkout de la rama ${branch}"
+          env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')   // <- fallback
+          echo "📥 Haciendo checkout de la rama ${env.EFFECTIVE_BRANCH}"
         }
         checkout scm
       }
@@ -28,15 +28,15 @@ pipeline {
 
     stage('Install dependencies') {
       steps {
-        echo "📦 Instalando dependencias NPM..."
+        echo "📦 npm ci (o npm install)"
         bat 'npm ci || npm install'
       }
     }
 
-    stage('Run tests') {
+    stage('Run tests (coverage)') {
       steps {
-        echo "🧪 Corriendo tests (Jest/RTL)..."
-        bat 'npm test -- --watchAll=false --ci --passWithNoTests'
+        echo "🧪 npm test -- --coverage --watchAll=false --ci --passWithNoTests"
+        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
       }
       post {
         unsuccessful { echo "❌ Fallaron las pruebas unitarias" }
@@ -46,19 +46,18 @@ pipeline {
 
     stage('Build app') {
       steps {
-        echo "🏗  Construyendo la app React (npm run build, ignorando warnings)..."
-        // En Windows, limpiamos CI sólo en este paso
+        echo "🏗  npm run build"
         bat '''
-        set CI=
-        npm run build
+          set CI=
+          npm run build
         '''
       }
     }
 
-    /************ SOLO DEV / QA: Análisis SonarQube ************/
     stage('SonarQube Analysis') {
+      // Si NO usas Multibranch, BRANCH_NAME es null -> usa EFFECTIVE_BRANCH
       when {
-        anyOf { branch 'DEV'; branch 'QA' }
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV','QA']) }
       }
       steps {
         echo "🔍 Enviando análisis a SonarQube..."
@@ -66,13 +65,17 @@ pipeline {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             script {
               def scannerHome = tool 'sonar-scanner-win'
+              // Un proyecto por rama (Community Edition)
+              def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
+              def pName = "frontend-proyecto-final (${env.EFFECTIVE_BRANCH})"
+
               bat """
                 "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                  -Dsonar.projectKey=frontend-proyecto-final ^
-                  -Dsonar.projectName=frontend-proyecto-final ^
+                  -Dsonar.projectKey=${pKey} ^
+                  -Dsonar.projectName=${pName} ^
                   -Dsonar.sources=src ^
+                  -Dsonar.sourceEncoding=UTF-8 ^
                   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                  -Dsonar.host.url=http://localhost:9000 ^
                   -Dsonar.login=%SONAR_TOKEN%
               """
             }
@@ -81,62 +84,36 @@ pipeline {
       }
     }
 
-    /************ SOLO PROD: Empaquetado y Despliegue ************/
-    stage('Package artifact') {
-      when { branch 'PROD' }
+    stage('Quality Gate') {
+      when {
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV','QA']) }
+      }
       steps {
-        echo "📦 Archivando artefactos de build"
-        // Si quieres además un ZIP del build:
-        // powershell '''
-        //   if (Test-Path build.zip) { Remove-Item build.zip -Force }
-        //   Compress-Archive -Path build\\* -DestinationPath build.zip
-        // '''
-        // archiveArtifacts artifacts: 'build.zip', fingerprint: true
+        timeout(time: 2, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: false
+        }
+      }
+    }
+
+    stage('Package artifact') {
+      when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
+      steps {
+        echo "📦 Archivando artefactos"
         archiveArtifacts artifacts: 'build/**', fingerprint: true, onlyIfSuccessful: true
       }
     }
 
     stage('Deploy to PROD') {
-      when { branch 'PROD' }
+      when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
-        echo "🚀 Desplegando a PRODUCCIÓN"
-
-        // ===== Opción A: Despliegue a IIS local (Windows) =====
-        // Descomenta si usas IIS y configura DEPLOY_PATH arriba.
-        // powershell """
-        //   \$dest = '${env.DEPLOY_PATH}'
-        //   if (!(Test-Path \$dest)) { New-Item -ItemType Directory -Force -Path \$dest | Out-Null }
-        //   Get-ChildItem -Path \$dest -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        //   Copy-Item -Path 'build\\*' -Destination \$dest -Recurse -Force
-        // """
-
-        // ===== Opción B: Despliegue por SSH a Linux (Nginx) =====
-        // Requiere plugin SSH + credencial ID 'ssh-prod' y ajustar host/usuario/ruta
-        // sshagent(credentials: ['ssh-prod']) {
-        //   bat 'plink -batch user@server "rm -rf /var/www/miapp/*"'
-        //   bat 'pscp -batch -r build\\* user@server:/var/www/miapp/'
-        //   // Reinicio / reload de servicio si aplica
-        //   // bat 'plink -batch user@server "sudo systemctl reload nginx"'
-        // }
+        echo "🚀 Despliegue a PRODUCCIÓN (placeholder)"
       }
     }
   }
 
   post {
-    success {
-      script {
-        def branch = env.BRANCH_NAME ?: 'DEV'
-        echo "✅ Pipeline OK en rama ${branch}"
-      }
-    }
-    failure {
-      script {
-        def branch = env.BRANCH_NAME ?: 'DEV'
-        echo "❌ Falló el pipeline en rama ${branch}"
-      }
-    }
-    always {
-      echo "🏁 Fin de ejecución"
-    }
+    success { echo "✅ Pipeline OK en rama ${env.EFFECTIVE_BRANCH ?: (env.BRANCH_NAME ?: 'DEV')}" }
+    failure { echo "❌ Pipeline FAIL en rama ${env.EFFECTIVE_BRANCH ?: (env.BRANCH_NAME ?: 'DEV')}" }
+    always  { echo "🏁 Fin de ejecución" }
   }
 }
