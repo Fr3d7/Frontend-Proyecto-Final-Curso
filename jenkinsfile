@@ -1,0 +1,85 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo "📥 Haciendo checkout de la rama ${env.BRANCH_NAME}"
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                echo "📦 Instalando dependencias NPM..."
+                // En Windows: usamos bat, no sh
+                bat 'npm install'
+            }
+        }
+
+        stage('Run tests') {
+            steps {
+                echo "🧪 Corriendo tests (Jest/RTL)..."
+                // --watchAll=false para que no se quede esperando en modo watch
+                // --ci para que Jest falle correctamente si hay errores
+                bat 'npm test -- --watchAll=false --ci'
+            }
+            post {
+                unsuccessful {
+                    echo "❌ Fallaron las pruebas unitarias"
+                }
+                success {
+                    echo "✅ Pruebas unitarias OK"
+                }
+            }
+        }
+
+        stage('Build app') {
+            steps {
+                echo "🏗  Construyendo la app React (npm run build)..."
+                bat 'npm run build'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                echo "🔍 Enviando análisis a SonarQube..."
+
+                // Carga las variables de entorno del servidor Sonar
+                // 'sonar-local' debe existir en Jenkins > Manage Jenkins > Configure System > SonarQube Servers
+                withSonarQubeEnv('sonar-local') {
+
+                    // Inyecta el token del Sonar como variable SONAR_TOKEN
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+
+                        script {
+                            // Obtiene la ruta del sonar-scanner que registraste en Global Tool Configuration
+                            def scannerHome = tool 'sonar-scanner-win'
+
+                            // Ejecuta el sonar-scanner en Windows
+                            bat """
+                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                                  -Dsonar.projectKey=frontend-proyecto-final ^
+                                  -Dsonar.projectName=frontend-proyecto-final ^
+                                  -Dsonar.sources=src ^
+                                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                                  -Dsonar.host.url=http://localhost:9000 ^
+                                  -Dsonar.login=sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Pipeline OK en rama ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "❌ Falló el pipeline en rama ${env.BRANCH_NAME}"
+        }
+    }
+}
