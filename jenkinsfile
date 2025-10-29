@@ -58,10 +58,10 @@ pipeline {
       }
     }
 
-    // Análisis solo en DEV y QA (Community Edition no soporta branch analysis “nativo”)
+    // Análisis solo en DEV yQA (Community Edition no soporta branch analysis “nativo”)
     stage('SonarQube Analysis') {
       when {
-        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA']) }
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA', 'PROD']) }
       }
       steps {
         echo "🔍 Enviando análisis a SonarQube…"
@@ -91,7 +91,7 @@ pipeline {
     // (Opcional) Esperar Quality Gate en Jenkins
     stage('Quality Gate') {
       when {
-        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA']) }
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA', 'PROD']) }
       }
       steps {
         timeout(time: 2, unit: 'MINUTES') {
