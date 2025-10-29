@@ -53,34 +53,24 @@ pipeline {
 
 
         stage('SonarQube Analysis') {
-            steps {
-                echo "🔍 Enviando análisis a SonarQube..."
+    steps {
+        echo "🔍 Enviando análisis a SonarQube..."
 
-                // Usa la config de SonarQube que registraste en Jenkins (sonar-local)
-                withSonarQubeEnv('sonar-local') {
-
-                    // Saca el token de las credenciales seguras en Jenkins (ID: sonar-token)
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                        script {
-                            // Herramienta sonar-scanner configurada en Global Tool Configuration
-                            def scannerHome = tool 'sonar-scanner-win'
-
-                            // Ejecuta el escaneo
-                            bat """
-                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                                  -Dsonar.projectKey=frontend-proyecto-final ^
-                                  -Dsonar.projectName=frontend-proyecto-final ^
-                                  -Dsonar.sources=src ^
-                                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                                  -Dsonar.host.url=%http://localhost:9000% ^
-                                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
-                            """
-                        }
-                    }
-                }
+        withSonarQubeEnv('sonar-local') {
+            withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                bat """
+                    "C:\\ProgramData\\Jenkins\\.jenkins\\tools\\hudson.plugins.sonar.SonarRunnerInstallation\\sonar-scanner-win\\bin\\sonar-scanner.bat" ^
+                    -Dsonar.projectKey=frontend-proyecto-final ^
+                    -Dsonar.projectName=frontend-proyecto-final ^
+                    -Dsonar.sources=src ^
+                    -Dsonar.host.url=http://localhost:9000 ^
+                    -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
+                """
             }
         }
     }
+}
+
 
     post {
         success {
