@@ -73,7 +73,7 @@ pipeline {
                   -Dsonar.sources=src ^
                   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
                   -Dsonar.host.url=http://localhost:9000 ^
-                  -Dsonar.login=%SONAR_TOKEN%
+                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
               """
             }
           }
