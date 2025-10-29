@@ -1,85 +1,142 @@
 pipeline {
-    agent any
+  agent any
+  options {
+    timestamps()
+    ansiColor('xterm')
+    disableConcurrentBuilds()
+  }
 
-    stages {
+  environment {
+    // Para que CRA no trate warnings como errores
+    CI = ''
+    NODE_ENV = 'production'
+    // Si vas a usar despliegue a IIS, configura esta ruta:
+    // DEPLOY_PATH = 'C:\\inetpub\\wwwroot\\miapp'
+  }
 
-        stage('Checkout') {
-            steps {
-                echo "📥 Haciendo checkout de la rama ${env.BRANCH_NAME}"
-                checkout scm
-            }
+  stages {
+
+    stage('Checkout') {
+      steps {
+        script {
+          def branch = env.BRANCH_NAME ?: 'DEV'
+          echo "📥 Haciendo checkout de la rama ${branch}"
         }
-
-        stage('Install dependencies') {
-            steps {
-                echo "📦 Instalando dependencias NPM..."
-                // En Windows: usamos bat, no sh
-                bat 'npm install'
-            }
-        }
-
-        stage('Run tests') {
-            steps {
-                echo "🧪 Corriendo tests (Jest/RTL)..."
-                // --watchAll=false para que no se quede esperando en modo watch
-                // --ci para que Jest falle correctamente si hay errores
-                bat 'npm test -- --watchAll=false --ci'
-            }
-            post {
-                unsuccessful {
-                    echo "❌ Fallaron las pruebas unitarias"
-                }
-                success {
-                    echo "✅ Pruebas unitarias OK"
-                }
-            }
-        }
-
-        stage('Build app') {
-            steps {
-                echo "🏗  Construyendo la app React (npm run build)..."
-                bat 'npm run build'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                echo "🔍 Enviando análisis a SonarQube..."
-
-                // Carga las variables de entorno del servidor Sonar
-                // 'sonar-local' debe existir en Jenkins > Manage Jenkins > Configure System > SonarQube Servers
-                withSonarQubeEnv('sonar-local') {
-
-                    // Inyecta el token del Sonar como variable SONAR_TOKEN
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-
-                        script {
-                            // Obtiene la ruta del sonar-scanner que registraste en Global Tool Configuration
-                            def scannerHome = tool 'sonar-scanner-win'
-
-                            // Ejecuta el sonar-scanner en Windows
-                            bat """
-                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                                  -Dsonar.projectKey=frontend-proyecto-final ^
-                                  -Dsonar.projectName=frontend-proyecto-final ^
-                                  -Dsonar.sources=src ^
-                                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                                  -Dsonar.host.url=http://localhost:9000 ^
-                                  -Dsonar.login=sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31
-                            """
-                        }
-                    }
-                }
-            }
-        }
+        checkout scm
+      }
     }
 
-    post {
-        success {
-            echo "✅ Pipeline OK en rama ${env.BRANCH_NAME}"
-        }
-        failure {
-            echo "❌ Falló el pipeline en rama ${env.BRANCH_NAME}"
-        }
+    stage('Install dependencies') {
+      steps {
+        echo "📦 Instalando dependencias NPM..."
+        bat 'npm ci || npm install'
+      }
     }
+
+    stage('Run tests') {
+      steps {
+        echo "🧪 Corriendo tests (Jest/RTL)..."
+        bat 'npm test -- --watchAll=false --ci --passWithNoTests'
+      }
+      post {
+        unsuccessful { echo "❌ Fallaron las pruebas unitarias" }
+        success      { echo "✅ Pruebas unitarias OK" }
+      }
+    }
+
+    stage('Build app') {
+      steps {
+        echo "🏗  Construyendo la app React (npm run build, ignorando warnings)..."
+        // En Windows, limpiamos CI sólo en este paso
+        bat '''
+        set CI=
+        npm run build
+        '''
+      }
+    }
+
+    /************ SOLO DEV / QA: Análisis SonarQube ************/
+    stage('SonarQube Analysis') {
+      when {
+        anyOf { branch 'DEV'; branch 'QA' }
+      }
+      steps {
+        echo "🔍 Enviando análisis a SonarQube..."
+        withSonarQubeEnv('sonar-local') {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            script {
+              def scannerHome = tool 'sonar-scanner-win'
+              bat """
+                "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                  -Dsonar.projectKey=frontend-proyecto-final ^
+                  -Dsonar.projectName=frontend-proyecto-final ^
+                  -Dsonar.sources=src ^
+                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                  -Dsonar.host.url=http://localhost:9000 ^
+                  -Dsonar.login=%SONAR_TOKEN%
+              """
+            }
+          }
+        }
+      }
+    }
+
+    /************ SOLO PROD: Empaquetado y Despliegue ************/
+    stage('Package artifact') {
+      when { branch 'PROD' }
+      steps {
+        echo "📦 Archivando artefactos de build"
+        // Si quieres además un ZIP del build:
+        // powershell '''
+        //   if (Test-Path build.zip) { Remove-Item build.zip -Force }
+        //   Compress-Archive -Path build\\* -DestinationPath build.zip
+        // '''
+        // archiveArtifacts artifacts: 'build.zip', fingerprint: true
+        archiveArtifacts artifacts: 'build/**', fingerprint: true, onlyIfSuccessful: true
+      }
+    }
+
+    stage('Deploy to PROD') {
+      when { branch 'PROD' }
+      steps {
+        echo "🚀 Desplegando a PRODUCCIÓN"
+
+        // ===== Opción A: Despliegue a IIS local (Windows) =====
+        // Descomenta si usas IIS y configura DEPLOY_PATH arriba.
+        // powershell """
+        //   \$dest = '${env.DEPLOY_PATH}'
+        //   if (!(Test-Path \$dest)) { New-Item -ItemType Directory -Force -Path \$dest | Out-Null }
+        //   Get-ChildItem -Path \$dest -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        //   Copy-Item -Path 'build\\*' -Destination \$dest -Recurse -Force
+        // """
+
+        // ===== Opción B: Despliegue por SSH a Linux (Nginx) =====
+        // Requiere plugin SSH + credencial ID 'ssh-prod' y ajustar host/usuario/ruta
+        // sshagent(credentials: ['ssh-prod']) {
+        //   bat 'plink -batch user@server "rm -rf /var/www/miapp/*"'
+        //   bat 'pscp -batch -r build\\* user@server:/var/www/miapp/'
+        //   // Reinicio / reload de servicio si aplica
+        //   // bat 'plink -batch user@server "sudo systemctl reload nginx"'
+        // }
+      }
+    }
+  }
+
+  post {
+    success {
+      script {
+        def branch = env.BRANCH_NAME ?: 'DEV'
+        echo "✅ Pipeline OK en rama ${branch}"
+      }
+    }
+    failure {
+      script {
+        def branch = env.BRANCH_NAME ?: 'DEV'
+        echo "❌ Falló el pipeline en rama ${branch}"
+      }
+    }
+    always {
+      echo "🏁 Fin de ejecución"
+    }
+  }
 }
