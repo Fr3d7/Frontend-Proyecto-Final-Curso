@@ -5,24 +5,28 @@ pipeline {
     timestamps()
     ansiColor('xterm')
     disableConcurrentBuilds()
-    // Evita el checkout implícito duplicado (opcional)
+    // Evita el checkout implícito duplicado (útil en multibranch)
     // skipDefaultCheckout(true)
   }
 
   environment {
-    CI = ''              // CRA: no tratar warnings como errores
+    // CRA no trata warnings como errores si CI está vacío (solo durante build)
+    CI = ''
     NODE_ENV = 'production'
+    // Memoria de Node (opcional)
+    NODE_OPTIONS = "--max_old_space_size=4096"
   }
 
   stages {
 
     stage('Checkout') {
       steps {
-        script {
-          env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')   // <- fallback
-          echo "📥 Haciendo checkout de la rama ${env.EFFECTIVE_BRANCH}"
-        }
         checkout scm
+        script {
+          // Si NO es multibranch, BRANCH_NAME puede venir null → fallback DEV
+          env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')
+          echo "📥 Rama detectada: ${env.EFFECTIVE_BRANCH}"
+        }
       }
     }
 
@@ -54,18 +58,18 @@ pipeline {
       }
     }
 
+    // Análisis solo en DEV y QA (Community Edition no soporta branch analysis “nativo”)
     stage('SonarQube Analysis') {
-      // Si NO usas Multibranch, BRANCH_NAME es null -> usa EFFECTIVE_BRANCH
       when {
-        expression { return (env.EFFECTIVE_BRANCH in ['DEV','QA']) }
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA']) }
       }
       steps {
-        echo "🔍 Enviando análisis a SonarQube..."
+        echo "🔍 Enviando análisis a SonarQube…"
         withSonarQubeEnv('sonar-local') {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             script {
               def scannerHome = tool 'sonar-scanner-win'
-              // Un proyecto por rama (Community Edition)
+              // Un proyecto por rama (para Community Edition)
               def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
               def pName = "frontend-proyecto-final (${env.EFFECTIVE_BRANCH})"
 
@@ -76,7 +80,7 @@ pipeline {
                   -Dsonar.sources=src ^
                   -Dsonar.sourceEncoding=UTF-8 ^
                   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                  -Dsonar.login=%SONAR_TOKEN%
+                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
               """
             }
           }
@@ -84,17 +88,20 @@ pipeline {
       }
     }
 
+    // (Opcional) Esperar Quality Gate en Jenkins
     stage('Quality Gate') {
       when {
-        expression { return (env.EFFECTIVE_BRANCH in ['DEV','QA']) }
+        expression { return (env.EFFECTIVE_BRANCH in ['DEV', 'QA']) }
       }
       steps {
         timeout(time: 2, unit: 'MINUTES') {
+          // Si no quieres que falle el pipeline pon abortPipeline: false
           waitForQualityGate abortPipeline: false
         }
       }
     }
 
+    // Solo PROD: empaquetado / despliegue
     stage('Package artifact') {
       when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
@@ -112,8 +119,8 @@ pipeline {
   }
 
   post {
-    success { echo "✅ Pipeline OK en rama ${env.EFFECTIVE_BRANCH ?: (env.BRANCH_NAME ?: 'DEV')}" }
-    failure { echo "❌ Pipeline FAIL en rama ${env.EFFECTIVE_BRANCH ?: (env.BRANCH_NAME ?: 'DEV')}" }
+    success { echo "✅ Pipeline OK en rama ${env.EFFECTIVE_BRANCH}" }
+    failure { echo "❌ Pipeline FAIL en rama ${env.EFFECTIVE_BRANCH}" }
     always  { echo "🏁 Fin de ejecución" }
   }
 }
