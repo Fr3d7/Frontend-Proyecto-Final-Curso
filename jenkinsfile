@@ -6,9 +6,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 script {
-                    // valor por defecto si BRANCH_NAME viene vacío (pasa en jobs normales)
-                    def branch = env.BRANCH_NAME ?: "DEV"
-                    echo "📥 Haciendo checkout de la rama ${branch}"
+                    echo "📥 Haciendo checkout de la rama ${env.BRANCH_NAME}"
                 }
                 checkout scm
             }
@@ -17,7 +15,6 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 echo "📦 Instalando dependencias NPM..."
-                // En Windows usamos bat, no sh
                 bat 'npm install'
             }
         }
@@ -25,65 +22,68 @@ pipeline {
         stage('Run tests') {
             steps {
                 echo "🧪 Corriendo tests (Jest/RTL)..."
-                // --watchAll=false: desactiva modo watch
-                // --ci: modo CI
-                // --passWithNoTests: no truena si todavía no hay archivos *.test.js
+                // --passWithNoTests evita que falle si no hay pruebas aún
                 bat 'npm test -- --watchAll=false --ci --passWithNoTests'
             }
             post {
-                unsuccessful {
-                    echo "❌ Fallaron las pruebas unitarias"
-                }
                 success {
                     echo "✅ Pruebas unitarias OK"
+                }
+                unsuccessful {
+                    echo "❌ Fallaron las pruebas unitarias"
                 }
             }
         }
 
-                stage('Build app') {
+        stage('Build app') {
             steps {
                 echo "🏗  Construyendo la app React (npm run build, ignorando warnings)..."
-                // En Windows, para limpiar la variable de entorno CI solo en este paso:
+                // truco: en React CRA, si CI está vacío, los warnings no rompen el build
                 bat '''
-                set CI=
-                npm run build
+                    set CI=
+                    npm run build
                 '''
             }
         }
 
-
         stage('SonarQube Analysis') {
-    steps {
-        echo "🔍 Enviando análisis a SonarQube..."
+            steps {
+                echo "🔍 Enviando análisis a SonarQube..."
 
-        withSonarQubeEnv('sonar-local') {
-            withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                bat """
-                    "C:\\ProgramData\\Jenkins\\.jenkins\\tools\\hudson.plugins.sonar.SonarRunnerInstallation\\sonar-scanner-win\\bin\\sonar-scanner.bat" ^
-                    -Dsonar.projectKey=frontend-proyecto-final ^
-                    -Dsonar.projectName=frontend-proyecto-final ^
-                    -Dsonar.sources=src ^
-                    -Dsonar.host.url=http://localhost:9000 ^
-                    -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
-                """
+                // usa la config de SonarQube que agregaste en Manage Jenkins > Configure System
+                // nombre: sonar-local  (DEBE coincidir exactamente)
+                withSonarQubeEnv('sonar-local') {
+
+                    // Inyecta el token guardado en Credentials (ID: sonarqube-token)
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+
+                        // usamos la instalación del sonar-scanner que definiste en Global Tool Configuration
+                        // yo lo voy a llamar sonar-scanner-win porque así lo venías usando
+                        script {
+                            def scannerHome = tool 'sonar-scanner-win'
+
+                            bat """
+                                "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                                  -Dsonar.projectKey=frontend-proyecto-final ^
+                                  -Dsonar.projectName=frontend-proyecto-final ^
+                                  -Dsonar.sources=src ^
+                                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                                  -Dsonar.host.url=http://localhost:9000 ^
+                                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
+                            """
+                        }
+                    }
+                }
             }
         }
-    }
-}
-
+    } // <- cierre de stages
 
     post {
         success {
-            script {
-                def branch = env.BRANCH_NAME ?: "DEV"
-                echo "✅ Pipeline OK en rama ${branch}"
-            }
+            echo "✅ Pipeline OK en rama ${env.BRANCH_NAME}"
         }
         failure {
-            script {
-                def branch = env.BRANCH_NAME ?: "DEV"
-                echo "❌ Falló el pipeline en rama ${branch}"
-            }
+            echo "❌ Falló el pipeline en rama ${env.BRANCH_NAME}"
         }
     }
-}
+} // <- cierre del pipeline
