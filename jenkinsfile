@@ -90,7 +90,7 @@ pipeline {
     stage('Quality Gate') {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
       steps {
-        timeout(time: 2, unit: 'MINUTES') {
+        timeout(time: 5, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: false
         }
       }
