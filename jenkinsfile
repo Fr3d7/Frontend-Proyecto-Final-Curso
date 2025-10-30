@@ -56,37 +56,37 @@ pipeline {
     }
 
     // ---------- SonarQube ----------
-    stage('SonarQube Analysis') {
-      when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
-      steps {
-        echo "🔍 Enviando análisis a SonarQube…"
-        withSonarQubeEnv('sonar-local') {
-          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31')]) {
-            script {
-              def scannerHome = tool 'sonar-scanner-win'
-              def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
-              // evita espacios/paréntesis sin comillas
-              def pName = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
-
-              bat """
-                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                  -D"sonar.projectKey=${pKey}" ^
-                  -D"sonar.projectName=${pName}" ^
-                  -D"sonar.sources=src" ^
-                  -D"sonar.sourceEncoding=UTF-8" ^
-                  -D"sonar.javascript.lcov.reportPaths=coverage\\lcov.info" ^
-                  -D"sonar.token=%SONAR_TOKEN%"
-              """
-
-              // Atajo clicable al dashboard, aparecera en el resumen del build
-              def sqUrl = env.SONAR_HOST_URL ?: 'http://localhost:9000'
-              def dashboard = "${sqUrl}/dashboard?id=${pKey}"
-              createSummary(icon: 'notepad.png', text: "<h3>SonarQube</h3><a href='${dashboard}'>Abrir análisis de ${pName}</a>")
-            }
-          }
-        }
-      }
+   stage('SonarQube Analysis') {
+  when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
+  steps {
+    echo "🔍 Enviando análisis a SonarQube…"
+    script {
+      def scannerHome = tool 'sonar-scanner-win'
     }
+    // Asegura cobertura
+    bat 'if not exist coverage\\lcov.info (echo "❌ No existe coverage\\lcov.info" & dir /s/b coverage & exit /b 1)'
+
+    withSonarQubeEnv('sonar-local') {
+      bat """
+        "${scannerHome}\\bin\\sonar-scanner.bat" ^
+          -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+          -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+          -D"sonar.projectBaseDir=%WORKSPACE%" ^
+          -D"sonar.sources=src" ^
+          -D"sonar.sourceEncoding=UTF-8" ^
+          -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
+          -D"sonar.login=%SONAR_AUTH_TOKEN%"
+      """
+    }
+
+    script {
+      def sqUrl = env.SONAR_HOST_URL ?: 'http://localhost:9000'
+      def dashboard = "${sqUrl}/dashboard?id=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
+      createSummary(icon: 'notepad.png',
+        text: "<h3>SonarQube</h3><a href='${dashboard}'>Abrir análisis ${env.EFFECTIVE_BRANCH}</a>")
+    }
+  }
+}
 
     stage('Quality Gate') {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
