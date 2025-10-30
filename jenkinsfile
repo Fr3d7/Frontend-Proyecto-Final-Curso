@@ -55,33 +55,32 @@ pipeline {
 
     // SonarQube (corre en DEV/QA/PROD; Community no hace branch analysis nativo)
     stage('SonarQube Analysis') {
-      when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
-      steps {
-        echo "🔍 Enviando análisis a SonarQube…"
-        withSonarQubeEnv('sonar-local') {
-          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-            script {
-              def scannerHome = tool 'sonar-scanner-win'
-              def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
-              // IMPORTANTE: comillas por espacios/paréntesis
-              def pName = "frontend-proyecto-final (${env.EFFECTIVE_BRANCH})"
+  when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
+  steps {
+    echo "🔍 Enviando análisis a SonarQube…"
+    withSonarQubeEnv('sonar-local') {
+      withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+        script {
+          def scannerHome = tool 'sonar-scanner-win'
+          def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
+          // sin espacios ni paréntesis
+          def pName = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
 
-              // En Windows, cuida el quoting; agrega projectBaseDir para evitar confusiones
-              bat """
-                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                  -Dsonar.projectKey=${pKey} ^
-                  -Dsonar.projectName="${pName}" ^
-                  -Dsonar.projectBaseDir=. ^
-                  -Dsonar.sources=src ^
-                  -Dsonar.sourceEncoding=UTF-8 ^
-                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
-              """
-            }
-          }
+          bat """
+            "${scannerHome}\\bin\\sonar-scanner.bat" ^
+              -Dsonar.projectKey=${pKey} ^
+              -Dsonar.projectName=${pName} ^
+              -Dsonar.projectBaseDir=. ^
+              -Dsonar.sources=src ^
+              -Dsonar.sourceEncoding=UTF-8 ^
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+              -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
+          """
         }
       }
     }
+  }
+}
 
     // Espera del Quality Gate (no falla el pipeline si lo ajustas a false)
     stage('Quality Gate') {
