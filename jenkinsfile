@@ -1,38 +1,30 @@
 pipeline {
   agent any
 
-  options {
-    timestamps()
-    ansiColor('xterm')
-    disableConcurrentBuilds()
-    skipDefaultCheckout(true)
-  }
-
   environment {
-    CI = ''
-    NODE_ENV = 'production'
-    NODE_OPTIONS = "--max_old_space_size=4096"
+    // Detecta si el job es PROD o DEV por el nombre del job
+    IS_PROD = "${env.JOB_BASE_NAME?.toLowerCase().contains('prod')}"
+    PROJECT_KEY = "${env.JOB_BASE_NAME?.toLowerCase().contains('prod') ? 'frontend-proyecto-final-PROD' : 'frontend-proyecto-final-DEV'}"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        checkout scm
-        script {
-          env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')
-          echo "📥 Rama detectada: ${env.EFFECTIVE_BRANCH}"
-        }
+        checkout([$class: 'GitSCM',
+          branches: [[name: '*/' + (IS_PROD ? 'PROD' : 'DEV')]],
+          userRemoteConfigs: [[url: 'https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git', credentialsId: 'github-creds']]
+        ])
+        echo "📦 Proyecto: ${PROJECT_KEY}"
       }
     }
 
     stage('Install dependencies') {
-      steps {
-        bat 'npm ci || npm install'
-      }
+      steps { bat 'npm ci  || npm install' }
     }
 
     stage('Run tests (coverage)') {
       steps {
+        // No falles si no hay tests, pero genera coverage si existen
         bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
       }
     }
@@ -47,57 +39,52 @@ pipeline {
     }
 
     stage('SonarQube Analysis') {
-  when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
-  steps {
-    script { scannerHome = tool 'sonar-scanner-win' }  // <-- usa el tool por nombre EXACTO
-    // (opcional) no mates el build si no hay coverage; solo avisa
-    bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
-
-    withSonarQubeEnv('sonar-local') {
-      bat """
-        "${scannerHome}\\bin\\sonar-scanner.bat" ^
-          -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-          -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-          -D"sonar.projectBaseDir=%WORKSPACE%" ^
-          -D"sonar.sources=src" ^
-          -D"sonar.tests=src" ^
-          -D"sonar.test.inclusions=**/*.test.js,**/*.spec.js" ^
-          -D"sonar.sourceEncoding=UTF-8" ^
-          -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
-          -D"sonar.login=%SONAR_AUTH_TOKEN%"
-      """
+      steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+          withSonarQubeEnv('sonar-local') {
+            // Si falta coverage/lcov.info solo avisa
+            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
+            bat """
+              "C:\\ProgramData\\Jenkins\\.jenkins\\tools\\hudson.plugins.sonar.SonarRunnerInstallation\\sonar-scanner-win\\bin\\sonar-scanner.bat" ^
+                -Dsonar.projectKey=${PROJECT_KEY} ^
+                -Dsonar.projectName=${PROJECT_KEY} ^
+                -Dsonar.projectBaseDir=%WORKSPACE% ^
+                -Dsonar.sources=src ^
+                -Dsonar.tests=src ^
+                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
+                -Dsonar.sourceEncoding=UTF-8 ^
+                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                -Dsonar.token=%SONAR_TOKEN%
+            """
+          }
+        }
+      }
     }
-  }
-}
-
 
     stage('Quality Gate') {
-      when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
       steps {
-        timeout(time: 3, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: false
+        // Más tiempo por si el servidor está ocupado
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
         }
       }
     }
 
     stage('Package artifact') {
-      when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
-        archiveArtifacts artifacts: 'build/**', fingerprint: true, onlyIfSuccessful: true
+        archiveArtifacts artifacts: 'build/**', fingerprint: true
       }
     }
 
     stage('Deploy to PROD') {
-      when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
+      when { expression { return IS_PROD } }
       steps {
-        echo '🚀 Deploy placeholder'
+        // EJEMPLO: copiar a una carpeta de publicación/IIS (ajusta ruta)
+        bat '''
+          if not exist C:\\deploy\\frontend mkdir C:\\deploy\\frontend
+          xcopy /E /I /Y build C:\\deploy\\frontend
+        '''
       }
     }
-  }
-
-  post {
-    success { echo "✅ OK ${env.EFFECTIVE_BRANCH}" }
-    failure { echo "❌ FAIL ${env.EFFECTIVE_BRANCH}" }
-    always  { echo "🏁 Fin" }
   }
 }
