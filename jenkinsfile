@@ -1,248 +1,102 @@
 pipeline {
   agent any
-<<<<<<< HEAD
 
   options {
     timestamps()
     ansiColor('xterm')
     disableConcurrentBuilds()
-    skipDefaultCheckout(true)   // evita checkout implícito duplicado
+    skipDefaultCheckout(true)
   }
 
   environment {
-    CI = ''                          // CRA: no tratar warnings como errores
+    CI = ''
     NODE_ENV = 'production'
     NODE_OPTIONS = "--max_old_space_size=4096"
   }
 
-=======
-  options {
-    timestamps()
-    ansiColor('xterm')
-    disableConcurrentBuilds()
-  }
-
-  environment {
-    // Para que CRA no trate warnings como errores
-    CI = ''
-    NODE_ENV = 'production'
-    // Si vas a usar despliegue a IIS, configura esta ruta:
-    // DEPLOY_PATH = 'C:\\inetpub\\wwwroot\\miapp'
-  }
-
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
   stages {
-
     stage('Checkout') {
       steps {
-<<<<<<< HEAD
         checkout scm
         script {
-          // Si no vienes de Multibranch, BRANCH_NAME es null -> usa DEV
           env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')
           echo "📥 Rama detectada: ${env.EFFECTIVE_BRANCH}"
         }
-=======
-        script {
-          def branch = env.BRANCH_NAME ?: 'DEV'
-          echo "📥 Haciendo checkout de la rama ${branch}"
-        }
-        checkout scm
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
       }
     }
 
     stage('Install dependencies') {
       steps {
-<<<<<<< HEAD
-        echo "📦 npm ci (o npm install)"
-=======
-        echo "📦 Instalando dependencias NPM..."
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
         bat 'npm ci || npm install'
       }
     }
 
-<<<<<<< HEAD
     stage('Run tests (coverage)') {
       steps {
-        echo "🧪 npm test -- --coverage --watchAll=false --ci --passWithNoTests"
         bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
-=======
-    stage('Run tests') {
-      steps {
-        echo "🧪 Corriendo tests (Jest/RTL)..."
-        bat 'npm test -- --watchAll=false --ci --passWithNoTests'
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
-      }
-      post {
-        unsuccessful { echo "❌ Fallaron las pruebas unitarias" }
-        success      { echo "✅ Pruebas unitarias OK" }
       }
     }
 
     stage('Build app') {
       steps {
-<<<<<<< HEAD
-        echo "🏗  npm run build"
         bat '''
           set CI=
           npm run build
-=======
-        echo "🏗  Construyendo la app React (npm run build, ignorando warnings)..."
-        // En Windows, limpiamos CI sólo en este paso
-        bat '''
-        set CI=
-        npm run build
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
         '''
       }
     }
 
-<<<<<<< HEAD
-    // ---------- SonarQube ----------
-   stage('SonarQube Analysis') {
-  when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
-  steps {
-    echo "🔍 Enviando análisis a SonarQube…"
-    script {
-      def scannerHome = tool 'sonar-scanner-win'
-    }
-    // Asegura cobertura
-    bat 'if not exist coverage\\lcov.info (echo "❌ No existe coverage\\lcov.info" & dir /s/b coverage & exit /b 1)'
-
-    withSonarQubeEnv('sonar-local') {
-      bat """
-        "${scannerHome}\\bin\\sonar-scanner.bat" ^
-          -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-          -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-          -D"sonar.projectBaseDir=%WORKSPACE%" ^
-          -D"sonar.sources=src" ^
-          -D"sonar.sourceEncoding=UTF-8" ^
-          -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
-          -D"sonar.login=%SONAR_AUTH_TOKEN%"
-      """
-    }
-
-    script {
-      def sqUrl = env.SONAR_HOST_URL ?: 'http://localhost:9000'
-      def dashboard = "${sqUrl}/dashboard?id=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
-      createSummary(icon: 'notepad.png',
-        text: "<h3>SonarQube</h3><a href='${dashboard}'>Abrir análisis ${env.EFFECTIVE_BRANCH}</a>")
-    }
-  }
-}
-
-    stage('Quality Gate') {
+    stage('SonarQube Analysis') {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
       steps {
-        timeout(time: 2, unit: 'MINUTES') {
-          // pon abortPipeline: true si quieres que falle el build al no pasar el gate
-          waitForQualityGate abortPipeline: false
-=======
-    /************ SOLO DEV / QA: Análisis SonarQube ************/
-    stage('SonarQube Analysis') {
-      when {
-        anyOf { branch 'DEV'; branch 'QA' }
-      }
-      steps {
-        echo "🔍 Enviando análisis a SonarQube..."
+        script { def scannerHome = tool 'sonar-scanner-win' }
+        // asegura que exista el reporte de cobertura
+        bat 'if not exist coverage\\lcov.info (echo "No existe coverage\\lcov.info" & dir /s/b coverage & exit /b 1)'
+
         withSonarQubeEnv('sonar-local') {
-          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-            script {
-              def scannerHome = tool 'sonar-scanner-win'
-              bat """
-                "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                  -Dsonar.projectKey=frontend-proyecto-final ^
-                  -Dsonar.projectName=frontend-proyecto-final ^
-                  -Dsonar.sources=src ^
-                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                  -Dsonar.host.url=http://localhost:9000 ^
-                  -Dsonar.login=%sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31%
-              """
-            }
-          }
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
+          bat """
+            "%SONAR_SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
+              -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+              -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+              -D"sonar.projectBaseDir=%WORKSPACE%" ^
+              -D"sonar.sources=src" ^
+              -D"sonar.tests=src" ^
+              -D"sonar.test.inclusions=**/*.test.js,**/*.spec.js" ^
+              -D"sonar.sourceEncoding=UTF-8" ^
+              -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
+              -D"sonar.login=%SONAR_AUTH_TOKEN%"
+          """
         }
       }
     }
 
-<<<<<<< HEAD
-    // ---------- Solo PROD ----------
+    stage('Quality Gate') {
+      when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
+      steps {
+        timeout(time: 3, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: false
+        }
+      }
+    }
+
     stage('Package artifact') {
       when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
-        echo "📦 Archivando artefactos"
-=======
-    /************ SOLO PROD: Empaquetado y Despliegue ************/
-    stage('Package artifact') {
-      when { branch 'PROD' }
-      steps {
-        echo "📦 Archivando artefactos de build"
-        // Si quieres además un ZIP del build:
-        // powershell '''
-        //   if (Test-Path build.zip) { Remove-Item build.zip -Force }
-        //   Compress-Archive -Path build\\* -DestinationPath build.zip
-        // '''
-        // archiveArtifacts artifacts: 'build.zip', fingerprint: true
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
         archiveArtifacts artifacts: 'build/**', fingerprint: true, onlyIfSuccessful: true
       }
     }
 
     stage('Deploy to PROD') {
-<<<<<<< HEAD
       when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
-        echo "🚀 Despliegue a PRODUCCIÓN (placeholder)"
-=======
-      when { branch 'PROD' }
-      steps {
-        echo "🚀 Desplegando a PRODUCCIÓN"
-
-        // ===== Opción A: Despliegue a IIS local (Windows) =====
-        // Descomenta si usas IIS y configura DEPLOY_PATH arriba.
-        // powershell """
-        //   \$dest = '${env.DEPLOY_PATH}'
-        //   if (!(Test-Path \$dest)) { New-Item -ItemType Directory -Force -Path \$dest | Out-Null }
-        //   Get-ChildItem -Path \$dest -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        //   Copy-Item -Path 'build\\*' -Destination \$dest -Recurse -Force
-        // """
-
-        // ===== Opción B: Despliegue por SSH a Linux (Nginx) =====
-        // Requiere plugin SSH + credencial ID 'ssh-prod' y ajustar host/usuario/ruta
-        // sshagent(credentials: ['ssh-prod']) {
-        //   bat 'plink -batch user@server "rm -rf /var/www/miapp/*"'
-        //   bat 'pscp -batch -r build\\* user@server:/var/www/miapp/'
-        //   // Reinicio / reload de servicio si aplica
-        //   // bat 'plink -batch user@server "sudo systemctl reload nginx"'
-        // }
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
+        echo '🚀 Deploy placeholder'
       }
     }
   }
 
   post {
-<<<<<<< HEAD
-    success { echo "✅ Pipeline OK en rama ${env.EFFECTIVE_BRANCH}" }
-    failure { echo "❌ Pipeline FAIL en rama ${env.EFFECTIVE_BRANCH}" }
-    always  { echo "🏁 Fin de ejecución" }
-=======
-    success {
-      script {
-        def branch = env.BRANCH_NAME ?: 'DEV'
-        echo "✅ Pipeline OK en rama ${branch}"
-      }
-    }
-    failure {
-      script {
-        def branch = env.BRANCH_NAME ?: 'DEV'
-        echo "❌ Falló el pipeline en rama ${branch}"
-      }
-    }
-    always {
-      echo "🏁 Fin de ejecución"
-    }
->>>>>>> a467845 (chore: add jenkinsfile for PROD)
+    success { echo "✅ OK ${env.EFFECTIVE_BRANCH}" }
+    failure { echo "❌ FAIL ${env.EFFECTIVE_BRANCH}" }
+    always  { echo "🏁 Fin" }
   }
 }
