@@ -5,20 +5,22 @@ pipeline {
     timestamps()
     ansiColor('xterm')
     disableConcurrentBuilds()
-    skipDefaultCheckout(true)   // ← evita checkout implícito
+    skipDefaultCheckout(true)   // evita checkout implícito duplicado
   }
 
   environment {
-    CI = ''                    // CRA: no tratar warnings como errores
+    CI = ''                          // CRA: no tratar warnings como errores
     NODE_ENV = 'production'
     NODE_OPTIONS = "--max_old_space_size=4096"
   }
 
   stages {
+
     stage('Checkout') {
       steps {
         checkout scm
         script {
+          // Si no vienes de Multibranch, BRANCH_NAME es null -> usa DEV
           env.EFFECTIVE_BRANCH = (env.BRANCH_NAME ?: 'DEV')
           echo "📥 Rama detectada: ${env.EFFECTIVE_BRANCH}"
         }
@@ -53,7 +55,7 @@ pipeline {
       }
     }
 
-    // SonarQube (DEV/QA/PROD)
+    // ---------- SonarQube ----------
     stage('SonarQube Analysis') {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
       steps {
@@ -63,7 +65,7 @@ pipeline {
             script {
               def scannerHome = tool 'sonar-scanner-win'
               def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
-              // sin paréntesis para evitar problemas de cmd
+              // evita espacios/paréntesis sin comillas
               def pName = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
 
               bat """
@@ -75,6 +77,11 @@ pipeline {
                   -D"sonar.javascript.lcov.reportPaths=coverage\\lcov.info" ^
                   -D"sonar.token=%SONAR_TOKEN%"
               """
+
+              // Atajo clicable al dashboard, aparecera en el resumen del build
+              def sqUrl = env.SONAR_HOST_URL ?: 'http://localhost:9000'
+              def dashboard = "${sqUrl}/dashboard?id=${pKey}"
+              createSummary(icon: 'notepad.png', text: "<h3>SonarQube</h3><a href='${dashboard}'>Abrir análisis de ${pName}</a>")
             }
           }
         }
@@ -85,11 +92,13 @@ pipeline {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
       steps {
         timeout(time: 2, unit: 'MINUTES') {
+          // pon abortPipeline: true si quieres que falle el build al no pasar el gate
           waitForQualityGate abortPipeline: false
         }
       }
     }
 
+    // ---------- Solo PROD ----------
     stage('Package artifact') {
       when { expression { env.EFFECTIVE_BRANCH == 'PROD' } }
       steps {
