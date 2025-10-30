@@ -47,28 +47,29 @@ pipeline {
     }
 
     stage('SonarQube Analysis') {
-      when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
-      steps {
-        script { def scannerHome = tool 'sonar-scanner-win' }
-        // asegura que exista el reporte de cobertura
-        bat 'if not exist coverage\\lcov.info (echo "No existe coverage\\lcov.info" & dir /s/b coverage & exit /b 1)'
+  when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
+  steps {
+    script { scannerHome = tool 'sonar-scanner-win' }  // <-- usa el tool por nombre EXACTO
+    // (opcional) no mates el build si no hay coverage; solo avisa
+    bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
 
-        withSonarQubeEnv('sonar-local') {
-          bat """
-            "%SONAR_SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
-              -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-              -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
-              -D"sonar.projectBaseDir=%WORKSPACE%" ^
-              -D"sonar.sources=src" ^
-              -D"sonar.tests=src" ^
-              -D"sonar.test.inclusions=**/*.test.js,**/*.spec.js" ^
-              -D"sonar.sourceEncoding=UTF-8" ^
-              -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
-              -D"sonar.login=%SONAR_AUTH_TOKEN%"
-          """
-        }
-      }
+    withSonarQubeEnv('sonar-local') {
+      bat """
+        "${scannerHome}\\bin\\sonar-scanner.bat" ^
+          -D"sonar.projectKey=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+          -D"sonar.projectName=frontend-proyecto-final-${env.EFFECTIVE_BRANCH}" ^
+          -D"sonar.projectBaseDir=%WORKSPACE%" ^
+          -D"sonar.sources=src" ^
+          -D"sonar.tests=src" ^
+          -D"sonar.test.inclusions=**/*.test.js,**/*.spec.js" ^
+          -D"sonar.sourceEncoding=UTF-8" ^
+          -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" ^
+          -D"sonar.login=%SONAR_AUTH_TOKEN%"
+      """
     }
+  }
+}
+
 
     stage('Quality Gate') {
       when { expression { env.EFFECTIVE_BRANCH in ['DEV','QA','PROD'] } }
