@@ -1,23 +1,27 @@
 pipeline {
   agent any
+
   options {
-    skipDefaultCheckout(true)          // Evita doble checkout
+    skipDefaultCheckout(true)
     ansiColor('xterm')
     timestamps()
   }
 
   parameters {
-    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch. Ignorado si BRANCH_NAME existe.')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
-    // Detecta rama: 1) Multibranch (BRANCH_NAME), 2) parámetro, 3) por nombre del job
-    RAW_BRANCH   = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
-    PIPE_BRANCH  = "${RAW_BRANCH.toUpperCase()}"
-    PROJECT_KEY  = "frontend-proyecto-final-${PIPE_BRANCH}"
-    // Ajusta esta ruta si tu instalación del scanner es distinta
-    SCANNER_BAT  = "C:\\ProgramData\\Jenkins\\.jenkins\\tools\\hudson.plugins.sonar.SonarRunnerInstallation\\sonar-scanner-win\\bin\\sonar-scanner.bat"
-    REPO_URL     = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    // Detecta la rama: Multibranch > parámetro > nombre del job
+    RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
+    PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
+    PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
+
+    // Usa el tool configurado en "Global Tool Configuration"
+    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
+    SCANNER_HOME = tool 'sonar-scanner-win'
+
+    REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
@@ -28,9 +32,6 @@ pipeline {
         }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
-          doGenerateSubmoduleConfigurations: false,
-          extensions: [],
-          submoduleCfg: [],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
       }
@@ -44,7 +45,7 @@ pipeline {
 
     stage('Run tests (coverage)') {
       steps {
-        // Si no hay tests, no falla y aún así genera lcov si existiera
+        // No falla si no hay tests; si existen, genera coverage
         bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
       }
     }
@@ -60,12 +61,12 @@ pipeline {
 
     stage('SonarQube Analysis') {
       steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
             // Aviso si no existe coverage/lcov.info (no falla)
             bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
             bat """
-              "${SCANNER_BAT}" ^
+              "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
                 -Dsonar.projectKey=${PROJECT_KEY} ^
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
@@ -85,7 +86,6 @@ pipeline {
     stage('Quality Gate') {
       steps {
         timeout(time: 10, unit: 'MINUTES') {
-          // Aborta el pipeline si el Gate falla
           waitForQualityGate abortPipeline: true
         }
       }
