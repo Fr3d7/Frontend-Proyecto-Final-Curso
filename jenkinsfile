@@ -61,7 +61,7 @@ pipeline {
       steps {
         echo "🔍 Enviando análisis a SonarQube…"
         withSonarQubeEnv('sonar-local') {
-          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'sqa_d88c9d69aaa3b92fdfa0cb421dc1a7663c167d31')]) {
             script {
               def scannerHome = tool 'sonar-scanner-win'
               def pKey  = "frontend-proyecto-final-${env.EFFECTIVE_BRANCH}"
