@@ -1,9 +1,14 @@
 pipeline {
   agent any
-  options { skipDefaultCheckout(true); ansiColor('xterm'); timestamps() }
+
+  options {
+    skipDefaultCheckout(true)
+    ansiColor('xterm')
+    timestamps()
+  }
 
   parameters {
-    choice(name: 'TARGET_BRANCH', choices: ['DEV','QA','PROD'], description: 'Solo para jobs NO multibranch.')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
@@ -11,7 +16,7 @@ pipeline {
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
     SCANNER_HOME = tool 'sonar-scanner-win'
-    REPO_URL = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
@@ -28,11 +33,12 @@ pipeline {
     stage('Install dependencies') {
       steps {
         bat 'npm ci || npm install'
+        // Asegura libs de testing usadas por el smoke
         bat 'npm ls @testing-library/react || npm i -D @testing-library/react @testing-library/jest-dom'
       }
     }
 
-    stage('Clean conflicting Jest/Babel configs') {
+    stage('Limpiar configs Jest/Babel conflictivas') {
       steps {
         bat 'if exist jest.config.cjs del /f /q jest.config.cjs'
         bat 'if exist jest.config.js  del /f /q jest.config.js'
@@ -41,48 +47,35 @@ pipeline {
       }
     }
 
-    stage('Ensure smoke test') {
+    stage('Crear test que EJECUTE código real') {
       steps {
-        bat 'if not exist src\\__tests__\\ mkdir src\\__tests__'
-        writeFile file: 'src/__tests__/ci.smoke.test.jsx', text: '''
+        // Este test importa y renderiza App: genera cobertura > 0
+        writeFile file: 'src/App.smoke.test.jsx', text: '''
+import React from "react";
+import { render, cleanup } from "@testing-library/react";
 import "@testing-library/jest-dom";
-test("smoke in __tests__", () => { expect(1+1).toBe(2); });
-'''.stripIndent()
-        writeFile file: 'src/ci.smoke.test.js', text: '''
-test("smoke in root", () => { expect(true).toBe(true); });
+import App from "./App";
+
+afterEach(() => cleanup());
+
+test("smoke: App render without crash", () => {
+  const { unmount } = render(<App />);
+  expect(App).toBeTruthy();
+  unmount();
+});
 '''.stripIndent()
       }
     }
 
-    stage('Run tests (coverage via CRA)') {
+    stage('Run tests (coverage)') {
       steps {
+        // CRA maneja CSS/SVG, etc. Genera coverage/lcov.info automáticamente
         bat '''
           set CI=true
-          npm test -- --coverage --watchAll=false --passWithNoTests ^
-            --testMatch="<rootDir>/src/**/?(*.)+(spec|test).[jt]s?(x)","<rootDir>/src/**/__tests__/**/*.[jt]s?(x)" ^
-            --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-            --collectCoverageFrom="!src/**/__tests__/**" ^
-            --coverageReporters=lcov,text
+          npm test -- --coverage --watchAll=false
         '''
-        // normaliza las barras en lcov (para Sonar)
-        writeFile file: 'scripts/fix-lcov.ps1', text: '''
-$path = "coverage/lcov.info"
-if (Test-Path $path) {
-  $c = Get-Content -Raw $path
-  $c = $c -replace "\\\\","/"
-  Set-Content -NoNewline -Path $path -Value $c
-}
-'''.stripIndent()
-        bat 'if exist coverage\\lcov.info powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\fix-lcov.ps1'
-
-        // imprime tamaño del LCOV (sin PowerShell quotes raros)
-        bat '''
-          if exist coverage\\lcov.info (
-            for %%A in ("coverage\\lcov.info") do @echo LCOV size=%%~zA bytes
-          ) else (
-            echo WARN: no coverage\\lcov.info
-          )
-        '''
+        // Log informativo (no rompe el build)
+        bat 'if exist coverage\\lcov.info (for %%I in (coverage\\lcov.info) do @echo LCOV size: %%~zI bytes) else (echo WARN: no se genero coverage\\lcov.info)'
       }
     }
 
@@ -107,9 +100,10 @@ if (Test-Path $path) {
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
                 -Dsonar.sources=src ^
                 -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx,**/*.test.ts,**/*.test.tsx,**/*.spec.js,**/*.spec.jsx,**/*.spec.ts,**/*.spec.tsx,src/**/__tests__/**/* ^
+                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},src/**/__tests__/**/* ^
                 -Dsonar.sourceEncoding=UTF-8 ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
             """
           }
@@ -118,7 +112,11 @@ if (Test-Path $path) {
     }
 
     stage('Quality Gate') {
-      steps { timeout(time: 10, unit: 'MINUTES') { waitForQualityGate abortPipeline: true } }
+      steps {
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
     }
 
     stage('Package artifact') {
@@ -140,5 +138,9 @@ if (Test-Path $path) {
     }
   }
 
-  post { always { echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}" } }
+  post {
+    always {
+      echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
+    }
+  }
 }
