@@ -14,6 +14,7 @@ pipeline {
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
     SCANNER_HOME = tool 'sonar-scanner-win'
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    APP_DIR = "login-registration"
   }
   stages {
     stage('Checkout') {
@@ -25,75 +26,72 @@ pipeline {
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
-        // Verificar que login-registration existe
+        // Verificar que login-registration existe después del checkout
         script {
-          bat '''
-            if not exist login-registration (
-              echo ERROR: login-registration no encontrado después del checkout
+          bat """
+            if not exist ${env.APP_DIR} (
+              echo ERROR: ${env.APP_DIR} no encontrado después del checkout
               echo Listando directorios...
               dir /b
               exit /b 1
             )
-            echo login-registration encontrado correctamente
-            if exist login-registration\\src (
+            echo ${env.APP_DIR} encontrado correctamente
+            if exist ${env.APP_DIR}\\src (
               echo Verificando archivos test...
-              dir /b login-registration\\src\\*.test.js 2>nul || echo Advertencia: No se encontraron archivos test.js
+              dir /b ${env.APP_DIR}\\src\\*.test.js 2>nul || echo Advertencia: No se encontraron archivos test.js
+              echo.
+              echo Verificando archivos fuente (no tests):
+              dir /b ${env.APP_DIR}\\src\\*.js 2>nul | findstr /v /i "\\.test\\. " || echo Advertencia: No se encontraron archivos fuente .js
             )
-          '''
+          """
         }
       }
     }
     stage('Install dependencies') {
       steps {
-        dir('login-registration') {
+        dir(env.APP_DIR) {
           bat 'npm ci || npm install'
         }
       }
     }
     stage('Run tests (coverage)') {
       steps {
-        dir('login-registration') {
+        dir(env.APP_DIR) {
           bat '''
             set CI=true
             REM Limpiar cache de Jest por si quedó alguna configuración antigua
             npx --yes jest --clearCache || echo Cache limpia
             echo Ejecutando tests con cobertura...
-            npm test -- ^
-              --coverage ^
-              --watchAll=false ^
-              --ci ^
-              --coverageReporters=lcov ^
-              --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-              --testMatch="**/src/**/*.test.*"
+            npm test -- --coverage --watchAll=false --ci --coverageReporters=lcov --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" --testMatch="**/src/**/*.test.*"
           '''
         }
       }
     }
     stage('Verify coverage file') {
       steps {
-        powershell '''
-          $coveragePath = "login-registration/coverage/lcov.info"
-          if (-not (Test-Path $coveragePath)) { 
-            Write-Error "No se generó $coveragePath"; 
+        powershell """
+          `$coveragePath = "${env.APP_DIR}/coverage/lcov.info"
+          if (-not (Test-Path `$coveragePath)) { 
+            Write-Error "No se generó `$coveragePath"; 
             exit 1 
           }
-          $s = (Get-Item $coveragePath).Length
-          if ($s -lt 500) { 
-            Write-Error "LCOV vacío o muy pequeño ($s bytes)"; 
+          `$s = (Get-Item `$coveragePath).Length
+          if (`$s -lt 500) { 
+            Write-Error "LCOV vacío o muy pequeño (`$s bytes)"; 
             exit 1 
           }
-          Write-Output "LCOV size=$s bytes"
+          Write-Output "LCOV size=`$s bytes"
           # Copiar coverage a raíz para SonarQube
           if (-not (Test-Path "coverage")) {
             New-Item -ItemType Directory -Path "coverage" -Force | Out-Null
           }
-          Copy-Item -Path $coveragePath -Destination "coverage/lcov.info" -Force
-        '''
+          Copy-Item -Path `$coveragePath -Destination "coverage/lcov.info" -Force
+        """
       }
     }
     stage('Build app') {
       steps {
-        dir('login-registration') {
+        dir(env.APP_DIR) {
           bat '''
             set CI=
             npm run build
@@ -103,6 +101,23 @@ pipeline {
     }
     stage('SonarQube Analysis') {
       steps {
+        script {
+          echo "Verificando archivos antes de SonarQube..."
+          bat """
+            echo Listando archivos fuente en ${env.APP_DIR}\\src (excluyendo tests):
+            dir /s /b ${env.APP_DIR}\\src\\*.js ${env.APP_DIR}\\src\\*.jsx 2>nul | findstr /v /i "\\.test\\. " | findstr /v /i "__mocks__"
+            echo.
+            echo Listando archivos de tests:
+            dir /s /b ${env.APP_DIR}\\src\\*.test.* 2>nul
+            echo.
+            echo Verificando que coverage/lcov.info existe:
+            if exist coverage\\lcov.info (
+              for %%I in (coverage\\lcov.info) do @echo coverage\\lcov.info size=%%~zI bytes
+            ) else (
+              echo ERROR: coverage\\lcov.info no encontrado
+            )
+          """
+        }
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
             bat """
@@ -111,10 +126,12 @@ pipeline {
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
-                -Dsonar.sources=login-registration/src ^
-                -Dsonar.tests=login-registration/src ^
-                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/** ^
+                -Dsonar.sources=${env.APP_DIR}/src ^
+                -Dsonar.tests=${env.APP_DIR}/src ^
                 -Dsonar.sourceEncoding=UTF-8 ^
+                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/**,**/*.spec.{js,jsx,ts,tsx} ^
+                -Dsonar.test.exclusions=**/node_modules/**,**/build/** ^
+                -Dsonar.exclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/**,**/*.spec.{js,jsx,ts,tsx},**/node_modules/**,**/build/**,**/coverage/**,**/__mocks__/** ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
@@ -132,7 +149,7 @@ pipeline {
     }
     stage('Package artifact') {
       steps {
-        dir('login-registration') {
+        dir(env.APP_DIR) {
           archiveArtifacts artifacts: 'build/**', fingerprint: true
         }
       }
@@ -142,7 +159,7 @@ pipeline {
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          dir('login-registration') {
+          dir(env.APP_DIR) {
             bat """
               if not exist ${deployPath} mkdir ${deployPath}
               xcopy /E /I /Y build ${deployPath}
