@@ -12,24 +12,17 @@ pipeline {
   }
 
   environment {
-    // Detecta la rama: Multibranch > parámetro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-
-    // Usa el tool configurado en "Global Tool Configuration"
-    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
-    SCANNER_HOME = tool 'sonar-scanner-win'
-
+    SCANNER_HOME = tool 'sonar-scanner-win'     // Debe existir en Global Tool Config
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        script {
-          echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
-        }
+        echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
@@ -43,10 +36,19 @@ pipeline {
       }
     }
 
-    stage('Run tests (coverage)') {
+    stage('Run tests (coverage via CRA)') {
       steps {
-        // No falla si no hay tests; si existen, genera coverage
-        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
+        // CRA maneja CSS/JSX y genera coverage/lcov.info
+        bat '''
+          set CI=true
+          npm test -- --coverage --watchAll=false --ci --passWithNoTests ^
+            --coverageReporters=lcov ^
+            --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
+            --testPathIgnorePatterns="/node_modules/","/build/"
+        '''
+        // Falla si no hay LCOV o si está vacío (Windows-safe)
+        bat 'if not exist coverage\\lcov.info (echo ERROR: no coverage\\lcov.info && exit /b 1)'
+        bat 'forfiles /p coverage /m lcov.info /c "cmd /c if @fsize LEQ 20 (echo ERROR: LCOV too small ^(@fsize^ bytes^) && exit /b 1) else echo LCOV size=@fsize bytes"'
       }
     }
 
@@ -63,19 +65,18 @@ pipeline {
       steps {
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
-            // Aviso si no existe coverage/lcov.info (no falla)
-            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
             bat """
-              "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
+              "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
                 -Dsonar.projectKey=${PROJECT_KEY} ^
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
                 -Dsonar.sources=src ^
                 -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
+                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/** ^
                 -Dsonar.sourceEncoding=UTF-8 ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
             """
           }
@@ -98,9 +99,7 @@ pipeline {
     }
 
     stage('Deploy') {
-      when {
-        expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' }
-      }
+      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
