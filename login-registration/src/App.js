@@ -82,14 +82,30 @@ const LoginRegister = () => {
         {successMessage && <div className="alert alert-success">{successMessage}</div>}
         <form onSubmit={isLogin ? handleLogin : handleRegister}>
           {/* Registro requiere nombre */}
-          {!isLogin && <input required type="text" name="nombre" placeholder="Nombre" value={formData.nombre} onChange={handleChange} />}
-          {errors.nombre && <div className="alert alert-danger">{errors.nombre}</div>}
-          <input required type="email" name="correo" placeholder="Correo" value={formData.correo} onChange={handleChange} />
-          {errors.correo && <div className="alert alert-danger">{errors.correo}</div>}
-          <input required type="password" name="contrasena" placeholder="contrasena" value={formData.contrasena} onChange={handleChange} />
-          {errors.contrasena && <div className="alert alert-danger">{errors.contrasena}</div>}
-          {!isLogin && <input required type="password" name="confirmarcontrasena" placeholder="Confirmar contrasena" value={formData.confirmarcontrasena} onChange={handleChange} />}
-          {errors.confirmarcontrasena && <div className="alert alert-danger">{errors.confirmarcontrasena}</div>}
+          {!isLogin && (
+            <div className="form-group">
+              <label htmlFor="nombre">Nombre</label>
+              <input id="nombre" name="nombre" required type="text" placeholder="Nombre" value={formData.nombre} onChange={handleChange} />
+              {errors.nombre && <div className="alert alert-danger">{errors.nombre}</div>}
+            </div>
+          )}
+          <div className="form-group">
+            <label htmlFor="correo">Correo</label>
+            <input id="correo" name="correo" required type="email" placeholder="Correo" value={formData.correo} onChange={handleChange} />
+            {errors.correo && <div className="alert alert-danger">{errors.correo}</div>}
+          </div>
+          <div className="form-group">
+            <label htmlFor="contrasena">Contraseña</label>
+            <input id="contrasena" name="contrasena" required type="password" placeholder="Contraseña" value={formData.contrasena} onChange={handleChange} />
+            {errors.contrasena && <div className="alert alert-danger">{errors.contrasena}</div>}
+          </div>
+          {!isLogin && (
+            <div className="form-group">
+              <label htmlFor="confirmarcontrasena">Confirmar Contraseña</label>
+              <input id="confirmarcontrasena" name="confirmarcontrasena" required type="password" placeholder="Confirmar Contraseña" value={formData.confirmarcontrasena} onChange={handleChange} />
+              {errors.confirmarcontrasena && <div className="alert alert-danger">{errors.confirmarcontrasena}</div>}
+            </div>
+          )}
           <button className="btn btn-primary" type="submit">{isLogin ? 'Entrar' : 'Registrar'}</button>
         </form>
         <p onClick={toggleForm} style={{ cursor: 'pointer', marginTop: '1rem', color: '#007bff' }}>
@@ -135,24 +151,24 @@ const LoginRegister = () => {
     if (!showNewProjectModal) return null;
     return (
       <div className="modal-overlay">
-        <div className="modal-content">
-          <h2>Nuevo Proyecto</h2>
+        <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-nuevo-proyecto-title">
+          <h2 id="modal-nuevo-proyecto-title">Nuevo Proyecto</h2>
           <form>
             <div className="form-group">
-              <label>Nombre</label>
-              <input value={newProjectName} onChange={e => setNewProjectName(e.target.value)} required />
+              <label htmlFor="nombre-proyecto">Nombre</label>
+              <input id="nombre-proyecto" name="nombre" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label>Descripción</label>
-              <textarea value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} required />
+              <label htmlFor="descripcion-proyecto">Descripción</label>
+              <textarea id="descripcion-proyecto" name="descripcion" value={newProjectDescription} onChange={e => setNewProjectDescription(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label>Fecha Inicio</label>
-              <input type="date" value={newProjectStartDate} onChange={e => setNewProjectStartDate(e.target.value)} required />
+              <label htmlFor="fechaInicio-proyecto">Fecha Inicio</label>
+              <input id="fechaInicio-proyecto" name="fechaInicio" type="date" value={newProjectStartDate} onChange={e => setNewProjectStartDate(e.target.value)} required />
             </div>
             <div className="form-group">
-              <label>Fecha Fin</label>
-              <input type="date" value={newProjectEndDate} onChange={e => setNewProjectEndDate(e.target.value)} required />
+              <label htmlFor="fechaFin-proyecto">Fecha Fin</label>
+              <input id="fechaFin-proyecto" name="fechaFin" type="date" value={newProjectEndDate} onChange={e => setNewProjectEndDate(e.target.value)} required />
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-primary" onClick={handleCreateProject}>Guardar</button>
@@ -168,12 +184,14 @@ const LoginRegister = () => {
     if (!showEditProjectModal) return null;
     return (
       <div className="modal-overlay">
-        <div className="modal-content">
-          <h2>Editar Proyecto</h2>
+        <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-editar-proyecto-title">
+          <h2 id="modal-editar-proyecto-title">Editar Proyecto</h2>
           <form>
             <div className="form-group">
-              <label>Nombre</label>
+              <label htmlFor="nombre-edit-proyecto">Nombre</label>
               <input
+                id="nombre-edit-proyecto"
+                name="nombre"
                 type="text"
                 value={newProjectName}
                 onChange={e => setNewProjectName(e.target.value)}
@@ -181,16 +199,20 @@ const LoginRegister = () => {
               />
             </div>
             <div className="form-group">
-              <label>Descripción</label>
+              <label htmlFor="descripcion-edit-proyecto">Descripción</label>
               <textarea
+                id="descripcion-edit-proyecto"
+                name="descripcion"
                 value={newProjectDescription}
                 onChange={e => setNewProjectDescription(e.target.value)}
                 required
               />
             </div>
             <div className="form-group">
-              <label>Fecha Inicio</label>
+              <label htmlFor="fechaInicio-edit-proyecto">Fecha Inicio</label>
               <input
+                id="fechaInicio-edit-proyecto"
+                name="fechaInicio"
                 type="date"
                 value={newProjectStartDate}
                 onChange={e => setNewProjectStartDate(e.target.value)}
@@ -198,8 +220,10 @@ const LoginRegister = () => {
               />
             </div>
             <div className="form-group">
-              <label>Fecha Fin</label>
+              <label htmlFor="fechaFin-edit-proyecto">Fecha Fin</label>
               <input
+                id="fechaFin-edit-proyecto"
+                name="fechaFin"
                 type="date"
                 value={newProjectEndDate}
                 onChange={e => setNewProjectEndDate(e.target.value)}
@@ -233,36 +257,36 @@ const LoginRegister = () => {
     if (!showNewEpicModal) return null;
     return (
       <div className="modal-overlay">
-        <div className="modal-content">
-          <h2>{editingItem?.type === 'epic' ? 'Editar Épica' : 'Nueva Épica'}</h2>
+        <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-epica-title">
+          <h2 id="modal-epica-title">{editingItem?.type === 'epic' ? 'Editar Épica' : 'Nueva Épica'}</h2>
           <form onSubmit={handleSubmitEpic}>
             <div className="form-group">
-              <label>Nombre</label>
-              <input type="text" className="form-control" value={newItemData.title} onChange={e => setNewItemData(prev => ({ ...prev, title: e.target.value }))} required />
+              <label htmlFor="nombre-epica">Nombre</label>
+              <input id="nombre-epica" name="nombre" type="text" className="form-control" value={newItemData.title} onChange={e => setNewItemData(prev => ({ ...prev, title: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Detalles</label>
-              <textarea className="form-control" value={newItemData.description} onChange={e => setNewItemData(prev => ({ ...prev, description: e.target.value }))} required />
+              <label htmlFor="detalles-epica">Detalles</label>
+              <textarea id="detalles-epica" name="detalles" className="form-control" value={newItemData.description} onChange={e => setNewItemData(prev => ({ ...prev, description: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Estado</label>
-              <select className="form-control" value={newItemData.status} onChange={e => setNewItemData(prev => ({ ...prev, status: e.target.value }))} required>
+              <label htmlFor="estado-epica">Estado</label>
+              <select id="estado-epica" name="estado" className="form-control" value={newItemData.status} onChange={e => setNewItemData(prev => ({ ...prev, status: e.target.value }))} required>
                 <option value="Por hacer">Por hacer</option>
                 <option value="En curso">En curso</option>
                 <option value="Finalizada">Finalizada</option>
               </select>
             </div>
             <div className="form-group">
-              <label>Fecha Inicio</label>
-              <input type="date" className="form-control" value={newItemData.startDate} onChange={e => setNewItemData(prev => ({ ...prev, startDate: e.target.value }))} required />
+              <label htmlFor="fechaInicio-epica">Fecha Inicio</label>
+              <input id="fechaInicio-epica" name="fechaInicio" type="date" className="form-control" value={newItemData.startDate} onChange={e => setNewItemData(prev => ({ ...prev, startDate: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Fecha Fin</label>
-              <input type="date" className="form-control" value={newItemData.endDate} onChange={e => setNewItemData(prev => ({ ...prev, endDate: e.target.value }))} required />
+              <label htmlFor="fechaFin-epica">Fecha Fin</label>
+              <input id="fechaFin-epica" name="fechaFin" type="date" className="form-control" value={newItemData.endDate} onChange={e => setNewItemData(prev => ({ ...prev, endDate: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>A cargo de</label>
-              <input type="text" className="form-control" value={newItemData.responsable} onChange={e => setNewItemData(prev => ({ ...prev, responsable: e.target.value }))} required />
+              <label htmlFor="responsable-epica">A cargo de</label>
+              <input id="responsable-epica" name="responsable" type="text" className="form-control" value={newItemData.responsable} onChange={e => setNewItemData(prev => ({ ...prev, responsable: e.target.value }))} required />
             </div>
             <div className="modal-footer">
               <button type="submit" className="btn btn-primary">{editingItem ? 'Actualizar' : 'Crear'}</button>
@@ -280,47 +304,47 @@ const LoginRegister = () => {
     const projectEpics = epics.filter(e => e.projectId === selectedProject?.id);
     return (
       <div className="modal-overlay">
-        <div className="modal-content">
-          <h2>{editingItem?.type === 'story' ? 'Editar Historia' : 'Nueva Historia'}</h2>
+        <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-historia-title">
+          <h2 id="modal-historia-title">{editingItem?.type === 'story' ? 'Editar Historia' : 'Nueva Historia'}</h2>
           <form onSubmit={handleSubmitStory}>
             <div className="form-group">
-              <label>Nombre</label>
-              <input type="text" className="form-control" value={newItemData.title} onChange={e => setNewItemData(prev => ({ ...prev, title: e.target.value }))} required />
+              <label htmlFor="nombre-historia">Nombre</label>
+              <input id="nombre-historia" name="nombre" type="text" className="form-control" value={newItemData.title} onChange={e => setNewItemData(prev => ({ ...prev, title: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Detalles</label>
-              <textarea className="form-control" value={newItemData.description} onChange={e => setNewItemData(prev => ({ ...prev, description: e.target.value }))} required />
+              <label htmlFor="detalles-historia">Detalles</label>
+              <textarea id="detalles-historia" name="detalles" className="form-control" value={newItemData.description} onChange={e => setNewItemData(prev => ({ ...prev, description: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Fecha Inicio</label>
-              <input type="date" className="form-control" value={newItemData.startDate} onChange={e => setNewItemData(prev => ({ ...prev, startDate: e.target.value }))} required />
+              <label htmlFor="fechaInicio-historia">Fecha Inicio</label>
+              <input id="fechaInicio-historia" name="fechaInicio" type="date" className="form-control" value={newItemData.startDate} onChange={e => setNewItemData(prev => ({ ...prev, startDate: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Fecha Fin</label>
-              <input type="date" className="form-control" value={newItemData.endDate} onChange={e => setNewItemData(prev => ({ ...prev, endDate: e.target.value }))} required />
+              <label htmlFor="fechaFin-historia">Fecha Fin</label>
+              <input id="fechaFin-historia" name="fechaFin" type="date" className="form-control" value={newItemData.endDate} onChange={e => setNewItemData(prev => ({ ...prev, endDate: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>A cargo de</label>
-              <input type="text" className="form-control" value={newItemData.responsable} onChange={e => setNewItemData(prev => ({ ...prev, responsable: e.target.value }))} required />
+              <label htmlFor="responsable-historia">A cargo de</label>
+              <input id="responsable-historia" name="responsable" type="text" className="form-control" value={newItemData.responsable} onChange={e => setNewItemData(prev => ({ ...prev, responsable: e.target.value }))} required />
             </div>
             <div className="form-group">
-              <label>Épica</label>
-              <select className="form-control" value={newItemData.epicId || ''} onChange={e => setNewItemData(prev => ({ ...prev, epicId: e.target.value }))} required>
+              <label htmlFor="epica-historia">Épica</label>
+              <select id="epica-historia" name="epica" className="form-control" value={newItemData.epicId || ''} onChange={e => setNewItemData(prev => ({ ...prev, epicId: e.target.value }))} required>
                 <option value="">Seleccione Epic</option>
                 {projectEpics.map(epic => <option key={epic.id} value={epic.id}>{epic.title}</option>)}
               </select>
             </div>
             <div className="form-group">
-              <label>Estado</label>
-              <select className="form-control" value={newItemData.status} onChange={e => setNewItemData(prev => ({ ...prev, status: e.target.value }))} required>
+              <label htmlFor="estado-historia">Estado</label>
+              <select id="estado-historia" name="estado" className="form-control" value={newItemData.status} onChange={e => setNewItemData(prev => ({ ...prev, status: e.target.value }))} required>
                 <option value="Por hacer">Por hacer</option>
                 <option value="En curso">En curso</option>
                 <option value="Finalizada">Finalizada</option>
               </select>
             </div>
             <div className="form-group">
-              <label>Puntos de Historia</label>
-              <input type="number" className="form-control" value={newItemData.storyPoints} onChange={e => setNewItemData(prev => ({ ...prev, storyPoints: e.target.value }))} min="0" />
+              <label htmlFor="puntos-historia">Puntos de Historia</label>
+              <input id="puntos-historia" name="puntos" type="number" className="form-control" value={newItemData.storyPoints} onChange={e => setNewItemData(prev => ({ ...prev, storyPoints: e.target.value }))} min="0" />
             </div>
             <div className="modal-footer">
               <button type="submit" className="btn btn-primary">{editingItem ? 'Actualizar' : 'Crear'}</button>
@@ -1268,7 +1292,7 @@ const handleLogin = async (e) => {
     const isEditing = Boolean(editingSprint);
     return (
       <div className="modal-overlay">
-        <div className="modal-content" style={{ maxWidth: '500px', width: '100%' }}>
+        <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-sprint-title" style={{ maxWidth: '500px', width: '100%' }}>
           <h2>{isEditing ? 'Editar Sprint' : 'Nuevo Sprint'}</h2>
           <form onSubmit={e => { e.preventDefault(); handleCreateSprint(); }} className="p-3 sprint-form">
             <div className="form-group sprint-name">
