@@ -15,7 +15,7 @@ pipeline {
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool 'sonar-scanner-win'      // Debe existir como Tool en Jenkins
+    SCANNER_HOME = tool 'sonar-scanner-win'        // Debe existir con ese nombre en Global Tool Configuration
     REPO_URL  = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
     APP_DIR   = "login-registration"
   }
@@ -46,16 +46,20 @@ pipeline {
     stage('Seed minimal test (force coverage)') {
       steps {
         dir("${APP_DIR}") {
-          // Creamos fuente + test mínimos con Node para evitar problemas de batch y escaping
-          bat '''
-            chcp 65001 >NUL
-            node -e "const fs=require('fs');fs.mkdirSync('src',{recursive:true});
-                     if(!fs.existsSync('src/sum.js')){fs.writeFileSync('src/sum.js','export function sum(a,b){return a+b;}');}
-                     if(!fs.existsSync('src/smoke.test.js')){fs.writeFileSync('src/smoke.test.js','import {sum} from \\'./sum\\';test(\\'sum 2+3=5\\',()=>{expect(sum(2,3)).toBe(5);});');}
-                     console.log('Smoke test listo');"
-            echo ===== LISTADO SRC =====
-            dir /b src
-          '''
+          // Creamos carpeta src
+          bat 'if not exist src mkdir src'
+
+          // Escribimos los archivos con Jenkins (evita el infierno de comillas/escapes en Windows)
+          writeFile file: 'src/sum.js', text: '''export function sum(a, b) { return a + b; }
+'''
+          writeFile file: 'src/smoke.test.js', text: '''import { sum } from './sum';
+test('sum 2+3=5', () => { expect(sum(2,3)).toBe(5); });
+'''
+
+          // Verificación visual
+          bat 'echo ===== CONTENIDO SRC ===== & dir /b src'
+          // Doble verificación de contenido (opcional)
+          bat 'type src\\smoke.test.js'
         }
       }
     }
@@ -63,7 +67,7 @@ pipeline {
     stage('Run tests (coverage)') {
       steps {
         dir("${APP_DIR}") {
-          // No pasamos patrón; dejamos que CRA/Jest encuentre **/*.test.* en src
+          // Dejamos que CRA/Jest encuentre **/*.test.* dentro de src
           bat '''
             chcp 65001 >NUL
             npx react-scripts test --ci --watchAll=false --runInBand ^
