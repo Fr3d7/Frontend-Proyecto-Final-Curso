@@ -15,12 +15,11 @@ pipeline {
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool 'sonar-scanner-win'   // Debe existir en Global Tool Configuration
+    SCANNER_HOME = tool 'sonar-scanner-win'   // Configurado en Global Tool Configuration
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
@@ -34,14 +33,12 @@ pipeline {
     stage('Install dependencies') {
       steps {
         bat 'npm ci || npm install'
-        // Asegura librerías de test usadas por el smoke
         bat 'npm ls @testing-library/react || npm i -D @testing-library/react @testing-library/jest-dom'
       }
     }
 
     stage('Clean conflicting Jest/Babel configs') {
       steps {
-        // Evita "Multiple configurations found" — usaremos la config de CRA (react-scripts)
         bat 'if exist jest.config.cjs del /f /q jest.config.cjs'
         bat 'if exist jest.config.js  del /f /q jest.config.js'
         bat 'if exist babel.config.cjs del /f /q babel.config.cjs'
@@ -61,18 +58,23 @@ test("smoke passes", () => { expect(1+1).toBe(2); });
 
     stage('Run tests (coverage via CRA)') {
       steps {
-        // Genera coverage/lcov.info. Recoge cobertura de todo src para que Sonar la compute sí o sí.
         bat '''
           set CI=true
           npm test -- --coverage --watchAll=false --passWithNoTests ^
             --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
             --collectCoverageFrom="!src/**/__tests__/**"
         '''
-        // Normaliza backslashes para que Sonar en Windows no se pierda
-        bat 'if exist coverage\\lcov.info powershell -Command "(Get-Content coverage/lcov.info) -replace \\\\\\\\',\\'/' | Set-Content coverage/lcov.info"'
-        // Imprime tamaño; si es 0, verás el aviso
+        // Script de PowerShell para normalizar las rutas del LCOV (\\ -> /) sin pelearse con escapes
+        writeFile file: 'scripts/fix-lcov.ps1', text: '''
+$path = "coverage/lcov.info"
+if (Test-Path $path) {
+  $c = Get-Content -Raw $path
+  $c = $c -replace "\\\\","/"
+  Set-Content -NoNewline -Path $path -Value $c
+}
+'''.stripIndent()
+        bat 'if exist coverage\\lcov.info powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\fix-lcov.ps1'
         bat 'if exist coverage\\lcov.info for %I in (coverage\\lcov.info) do @echo LCOV size=%~zI bytes'
-        // No fallamos aquí para que el análisis corra aunque no exista lcov (pero verás WARN)
         bat 'if not exist coverage\\lcov.info echo WARN: no se genero coverage\\lcov.info'
       }
     }
