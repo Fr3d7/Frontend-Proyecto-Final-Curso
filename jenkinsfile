@@ -48,17 +48,16 @@ pipeline {
     stage('Seed minimal test if missing') {
       steps {
         dir("${APP_DIR}") {
-          // Crear fuente y dos variantes de test en UNA sola línea con Node
+          // Sembramos fuente y test en una sola línea con Node (sin conflictos de cmd)
           bat '''
             chcp 65001 >NUL
-            node -e "const fs=require('fs');fs.mkdirSync('src',{recursive:true});fs.mkdirSync('src/__tests__',{recursive:true});
+            node -e "const fs=require('fs');fs.mkdirSync('src',{recursive:true});
                      if(!fs.existsSync('src/sum.js')){fs.writeFileSync('src/sum.js','export function sum(a,b){return a+b;}');}
                      if(!fs.existsSync('src/sum.test.js')){fs.writeFileSync('src/sum.test.js','import {sum} from \\'./sum\\';test(\\'sum 2+3=5\\',()=>{expect(sum(2,3)).toBe(5);});');}
-                     if(!fs.existsSync('src/__tests__/sum.test.jsx')){fs.writeFileSync('src/__tests__/sum.test.jsx','import {sum} from \\'../sum\\';test(\\'sum 2+3=5\\',()=>{expect(sum(2,3)).toBe(5);});');}
                      console.log('Smoke test listo');"
-            echo ====== LISTADO SRC ======
+            echo ===== CONTENIDO SRC =====
             dir /b src
-            echo ====== CONTENIDO sum.test.js ======
+            echo ===== CONTENIDO sum.test.js =====
             type src\\sum.test.js
           '''
         }
@@ -68,13 +67,13 @@ pipeline {
     stage('Run tests (coverage)') {
       steps {
         dir("${APP_DIR}") {
-          // Ejecuta explícitamente ambas rutas de test para evitar falsos negativos en Windows
+          // IMPORTANTE: usar ruta POSIX en el patrón para Jest (nada de backslashes)
           bat '''
             chcp 65001 >NUL
             npx react-scripts test --ci --watchAll=false --runInBand ^
               --coverage --coverageReporters=lcov --coverageReporters=text-summary ^
               --coverageDirectory=coverage --collectCoverageFrom=src/**/*.{js,jsx,ts,tsx} ^
-              "src/sum.test.js" "src/__tests__/sum.test.jsx"
+              "src/sum.test.js"
 
             if not exist coverage\\lcov.info (
               echo ERROR: NO existe coverage\\lcov.info
