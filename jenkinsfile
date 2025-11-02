@@ -25,10 +25,6 @@ pipeline {
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
-        // Inicializar y actualizar submodules explícitamente
-        bat '''
-          git submodule update --init --recursive
-        '''
       }
     }
     stage('Install dependencies') {
