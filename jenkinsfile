@@ -111,7 +111,7 @@ pipeline {
         script {
           echo "Verificando archivos antes de SonarQube..."
           bat """
-            echo Listando archivos fuente en ${env.APP_DIR}\\src - excluyendo tests:
+            echo Listando archivos fuente en login-registration/src - excluyendo tests:
             dir /s /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " | findstr /v /i "__mocks__"
             echo.
             echo Listando archivos de tests:
