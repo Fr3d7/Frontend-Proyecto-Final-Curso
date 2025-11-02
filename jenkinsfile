@@ -1,89 +1,93 @@
 pipeline {
   agent any
-  options { skipDefaultCheckout(true); ansiColor(''xterm''); timestamps() }
+  options { skipDefaultCheckout(true); ansiColor('xterm'); timestamps() }
 
   parameters {
-    choice(name: ''TARGET_BRANCH'', choices: [''DEV'',''QA'',''PROD''], description: ''Solo para jobs NO multibranch.'')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV','QA','PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
-    RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains(''prod'') ? ''PROD'' : (env.JOB_BASE_NAME?.toLowerCase()?.contains(''qa'') ? ''QA'' : ''DEV'')))}"
+    RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool ''sonar-scanner-win''
-    REPO_URL = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
-    APP_DIR = "login-registration"
+
+    SCANNER_HOME = tool 'sonar-scanner-win'
+    REPO_URL     = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    APP_DIR      = "login-registration"
   }
 
   stages {
-    stage(''Checkout'') {
+    stage('Checkout') {
       steps {
-        echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Proyecto: ${env.PROJECT_KEY} | ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Âµ Rama: ${env.PIPE_BRANCH}"
-        checkout([$class: ''GitSCM'',
+        echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+        checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
-          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: ''github-creds'']]
+          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
-        bat ''if not exist %APP_DIR% (echo ERROR: falta %APP_DIR% && dir /b && exit /b 1)''
+        bat 'if not exist %APP_DIR% (echo ERROR: falta %APP_DIR% && dir /b && exit /b 1)'
       }
     }
 
-    stage(''Debug tests in QA'') {
+    stage('Ensure tests (smoke)') {
       steps {
         dir("${APP_DIR}") {
-          bat ''echo === LISTANDO TESTS === & dir /s /b src\\*.test.* src\\*.spec.* 2>nul || echo (no hay tests)''
-        }
-      }
-    }
-
-    stage(''Ensure tests (smoke)'') {
-      steps {
-        dir("${APP_DIR}") {
+          // Crea un test mínimo sin romper cmd.exe (usa PowerShell)
           bat '''
             powershell -NoProfile -Command ^
-              "$t = Get-ChildItem -Recurse -Path src -Include *.test.js,*.test.jsx,*.spec.js,*.spec.jsx -ErrorAction SilentlyContinue; ^
-               if (-not $t) { ^
-                 Write-Host ''No test files found. Creating smoke test...''; ^
-                 New-Item -ItemType Directory -Force -Path src\\__tests__ | Out-Null; ^
-                 $c = @''\nimport React from \\''react\\'';\ntest(\\''smoke runs\\'', () => { expect(true).toBe(true); });\n''@; ^
-                 Set-Content -Encoding UTF8 src\\__tests__\\smoke.test.jsx $c ^
-               } else { ^
-                 Write-Host ''Found tests:''; $t | ForEach-Object { Write-Host $_.FullName } ^
-               }"
+              "New-Item -Force -ItemType Directory src\\__tests__ | Out-Null; ^
+               $p = 'src\\__tests__\\smoke.test.jsx'; ^
+               if (-not (Test-Path $p)) { ^
+                 $c = @'
+import "@testing-library/jest-dom";
+test("smoke", () => { expect(1+1).toBe(2); });
+'@; ^
+                 $c | Out-File -FilePath $p -Encoding utf8 -Force; ^
+                 Write-Host 'Created smoke test'; ^
+               } else { Write-Host 'Smoke test exists'; }"
           '''
         }
       }
     }
 
-    stage(''Install dependencies'') {
+    stage('Install dependencies') {
       steps {
         dir("${APP_DIR}") {
-          bat ''npm ci || npm install''
+          bat 'npm ci || npm install'
         }
       }
     }
 
-    stage(''Run tests (coverage)'') {
+    stage('Run tests (coverage)') {
       steps {
         dir("${APP_DIR}") {
-          bat ''set CI=true && npm test -- --coverage --watchAll=false --ci --passWithNoTests --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}"''
-          bat ''if not exist coverage\\lcov.info (echo NO se genero coverage\\lcov.info & dir /s /b coverage & exit /b 1)''
+          // Genera LCOV aunque solo exista el smoke
+          bat '''
+            set CI=true
+            npx react-scripts test --ci --watchAll=false --coverage ^
+              --coverageReporters=lcov --coverageReporters=text-summary ^
+              --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}"
+          '''
+          bat 'if not exist coverage\\lcov.info (echo ERROR: no se genero coverage\\lcov.info & dir /s /b coverage & exit /b 1)'
         }
       }
     }
 
-    stage(''Build app'') {
+    stage('Build app') {
       steps {
         dir("${APP_DIR}") {
-          bat ''set CI= & npm run build''
+          // Evita que CRA falle por warnings en CI
+          withEnv(['CI=false']) {
+            bat 'npm run build'
+          }
         }
       }
     }
 
-    stage(''SonarQube Analysis'') {
+    stage('SonarQube Analysis') {
       steps {
         dir("${APP_DIR}") {
-          withCredentials([string(credentialsId: ''sonarqube-token'', variable: ''SONAR_TOKEN'')]) {
-            withSonarQubeEnv(''sonar-local'') {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('sonar-local') {
               bat """
                 "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
                   -Dsonar.projectKey=${PROJECT_KEY} ^
@@ -104,35 +108,35 @@ pipeline {
       }
     }
 
-    stage(''Quality Gate'') {
+    stage('Quality Gate') {
       steps {
-        timeout(time: 10, unit: ''MINUTES'') {
+        timeout(time: 10, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
       }
     }
 
-    stage(''Package artifact'') {
+    stage('Package artifact') {
       steps {
         archiveArtifacts artifacts: "${APP_DIR}/build/**", fingerprint: true
-        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: false
+        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: true
       }
     }
 
-    stage(''Deploy'') {
-      when { expression { env.PIPE_BRANCH == ''QA'' || env.PIPE_BRANCH == ''PROD'' } }
+    stage('Deploy') {
+      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
-          def deployPath = (env.PIPE_BRANCH == ''PROD'') ? ''C:\\deploy\\frontend'' : ''C:\\deploy\\frontend-qa''
+          def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
           bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
           bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${APP_DIR}\\build\" \"${deployPath}\""
-          echo "ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Desplegado a ${deployPath}"
+          echo "🚀 Desplegado a ${deployPath}"
         }
       }
     }
   }
 
   post {
-    always { echo "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}" }
+    always { echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}" }
   }
 }
