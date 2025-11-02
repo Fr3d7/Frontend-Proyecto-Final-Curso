@@ -15,11 +15,12 @@ pipeline {
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool 'sonar-scanner-win'
+    SCANNER_HOME = tool 'sonar-scanner-win'   // Debe existir en Global Tool Configuration
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
+
     stage('Checkout') {
       steps {
         echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
@@ -33,14 +34,14 @@ pipeline {
     stage('Install dependencies') {
       steps {
         bat 'npm ci || npm install'
-        // Asegura librerías de testing que usamos en el smoke
+        // Asegura librerías de test usadas por el smoke
         bat 'npm ls @testing-library/react || npm i -D @testing-library/react @testing-library/jest-dom'
       }
     }
 
     stage('Clean conflicting Jest/Babel configs') {
       steps {
-        // Evita "Multiple configurations found": usamos la config de react-scripts
+        // Evita "Multiple configurations found" — usaremos la config de CRA (react-scripts)
         bat 'if exist jest.config.cjs del /f /q jest.config.cjs'
         bat 'if exist jest.config.js  del /f /q jest.config.js'
         bat 'if exist babel.config.cjs del /f /q babel.config.cjs'
@@ -51,23 +52,28 @@ pipeline {
     stage('Ensure smoke test') {
       steps {
         bat 'if not exist src\\__tests__\\ mkdir src\\__tests__'
-        // Test mínimo para garantizar cobertura > 0 si no tienes tests
         writeFile file: 'src/__tests__/ci.smoke.test.jsx', text: '''
-import '@testing-library/jest-dom';
-test('smoke passes', () => { expect(1+1).toBe(2); });
+import "@testing-library/jest-dom";
+test("smoke passes", () => { expect(1+1).toBe(2); });
 '''.stripIndent()
       }
     }
 
     stage('Run tests (coverage via CRA)') {
       steps {
-        // CRA maneja CSS y demases; esto genera coverage/lcov.info
+        // Genera coverage/lcov.info. Recoge cobertura de todo src para que Sonar la compute sí o sí.
         bat '''
           set CI=true
-          npm test -- --coverage --watchAll=false --passWithNoTests
+          npm test -- --coverage --watchAll=false --passWithNoTests ^
+            --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
+            --collectCoverageFrom="!src/**/__tests__/**"
         '''
-        // Mensaje si no se generó coverage (no falla el build aquí)
-        bat 'if not exist coverage\\lcov.info (echo WARN: no se genero coverage\\lcov.info)'
+        // Normaliza backslashes para que Sonar en Windows no se pierda
+        bat 'if exist coverage\\lcov.info powershell -Command "(Get-Content coverage/lcov.info) -replace \\\\\\\\',\\'/' | Set-Content coverage/lcov.info"'
+        // Imprime tamaño; si es 0, verás el aviso
+        bat 'if exist coverage\\lcov.info for %I in (coverage\\lcov.info) do @echo LCOV size=%~zI bytes'
+        // No fallamos aquí para que el análisis corra aunque no exista lcov (pero verás WARN)
+        bat 'if not exist coverage\\lcov.info echo WARN: no se genero coverage\\lcov.info'
       }
     }
 
@@ -92,10 +98,9 @@ test('smoke passes', () => { expect(1+1).toBe(2); });
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
                 -Dsonar.sources=src ^
                 -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/*.spec.{js,jsx,ts,tsx},src/**/__tests__/**/* ^
+                -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx,**/*.test.ts,**/*.test.tsx,**/*.spec.js,**/*.spec.jsx,**/*.spec.ts,**/*.spec.tsx,src/**/__tests__/**/* ^
                 -Dsonar.sourceEncoding=UTF-8 ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
             """
           }
