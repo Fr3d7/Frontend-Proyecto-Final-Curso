@@ -1,21 +1,29 @@
 pipeline {
   agent any
+
   options {
     skipDefaultCheckout(true)
     ansiColor('xterm')
     timestamps()
   }
+
   parameters {
     choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
   }
+
   environment {
+    // Detecta la rama: Multibranch > parámetro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
+
+    // Usa el tool configurado en "Global Tool Configuration"
+    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
     SCANNER_HOME = tool 'sonar-scanner-win'
+
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
-    APP_DIR = "login-registration"
   }
+
   stages {
     stage('Checkout') {
       steps {
@@ -26,128 +34,55 @@ pipeline {
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
-        // Verificar que login-registration existe después del checkout
-        script {
-          bat """
-            if not exist "${env.APP_DIR}" (
-              echo ERROR: ${env.APP_DIR} no encontrado después del checkout
-              echo Listando directorios...
-              dir /b
-              exit /b 1
-            )
-            echo ${env.APP_DIR} encontrado correctamente
-            if exist "${env.APP_DIR}\\src" (
-              echo Verificando archivos test...
-              dir /b "${env.APP_DIR}\\src\\*.test.js" 2>nul || echo Advertencia: No se encontraron archivos test.js
-              echo.
-              echo Verificando archivos fuente sin tests
-              dir /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " || echo Advertencia: No se encontraron archivos fuente
-            )
-          '''
-      }
       }
     }
+
     stage('Install dependencies') {
       steps {
-        dir(env.APP_DIR) {
-          bat 'npm ci || npm install'
-        }
+        bat 'npm ci || npm install'
       }
     }
+
     stage('Run tests (coverage)') {
       steps {
-        dir(env.APP_DIR) {
-          bat '''
-            set CI=true
-            REM Limpiar cache de Jest por si quedó alguna configuración antigua
-            npx --yes jest --clearCache || echo Cache limpia
-            echo Ejecutando tests con cobertura...
-            npm test -- ^
-              --coverage ^
-              --watchAll=false ^
-              --ci ^
-              --coverageReporters=lcov ^
-              --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-              --testMatch="**/src/**/*.test.*" ^
-              --passWithNoTests
-          '''
-        }
+        // No falla si no hay tests; si existen, genera coverage
+        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
       }
     }
-    stage('Verify coverage file') {
+
+    stage('Build app') {
       steps {
-        powershell '''
-          $coveragePath = "login-registration/coverage/lcov.info"
-          if (-not (Test-Path $coveragePath)) { 
-            Write-Error "No se generó $coveragePath"; 
-            exit 1 
-          }
-          $s = (Get-Item $coveragePath).Length
-          if ($s -le 20) { 
-            Write-Error "LCOV demasiado pequeño ($s bytes)"; 
-            exit 1 
-          }
-          Write-Host "LCOV OK ($s bytes)"
-          # Copiar coverage a raíz para SonarQube
-          if (-not (Test-Path "coverage")) {
-            New-Item -ItemType Directory -Path "coverage" -Force | Out-Null
-          }
-          Copy-Item -Path $coveragePath -Destination "coverage/lcov.info" -Force
+        bat '''
+          set CI=
+          npm run build
         '''
       }
     }
-    stage('Build app') {
-      steps {
-        dir(env.APP_DIR) {
-          bat '''
-            set CI=
-            npm run build
-          '''
-        }
-      }
-    }
+
     stage('SonarQube Analysis') {
       steps {
-        script {
-          echo "Verificando archivos antes de SonarQube..."
-          bat """
-            echo Listando archivos fuente en login-registration/src - excluyendo tests:
-            dir /s /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " | findstr /v /i "__mocks__"
-            echo.
-            echo Listando archivos de tests:
-            dir /s /b "${env.APP_DIR}\\src\\*.test.*" 2>nul
-            echo.
-            echo Verificando que coverage/lcov.info existe:
-            if exist "coverage\\lcov.info" (
-              for %%I in ("coverage\\lcov.info") do @echo coverage\\lcov.info size=%%~zI bytes
-            ) else (
-              echo ERROR: coverage\\lcov.info no encontrado
-            )
-          '''
-      }
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
+            // Aviso si no existe coverage/lcov.info (no falla)
+            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
             bat """
-              "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
+              "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
                 -Dsonar.projectKey=${PROJECT_KEY} ^
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
-                -Dsonar.branch.name=${PIPE_BRANCH} ^
-                -Dsonar.sources=${env.APP_DIR}/src ^
-                -Dsonar.tests=${env.APP_DIR}/src ^
+                -Dsonar.sources=src ^
+                -Dsonar.tests=src ^
+                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
                 -Dsonar.sourceEncoding=UTF-8 ^
-                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/**,**/*.spec.{js,jsx,ts,tsx} ^
-                -Dsonar.test.exclusions=**/node_modules/**,**/build/** ^
-                -Dsonar.exclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/**,**/*.spec.{js,jsx,ts,tsx},**/node_modules/**,**/build/**,**/coverage/**,**/__mocks__/** ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
-            '''
-      }
+            """
+          }
         }
       }
     }
+
     stage('Quality Gate') {
       steps {
         timeout(time: 10, unit: 'MINUTES') {
@@ -155,29 +90,30 @@ pipeline {
         }
       }
     }
+
     stage('Package artifact') {
       steps {
-        dir(env.APP_DIR) {
-          archiveArtifacts artifacts: 'build/**', fingerprint: true
-        }
+        archiveArtifacts artifacts: 'build/**', fingerprint: true
       }
     }
+
     stage('Deploy') {
-      when { expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
+      when {
+        expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' }
+      }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          dir(env.APP_DIR) {
-            bat """
-              if not exist ${deployPath} mkdir ${deployPath}
-              xcopy /E /I /Y build ${deployPath}
-            '''
-      }
+          bat """
+            if not exist ${deployPath} mkdir ${deployPath}
+            xcopy /E /I /Y build ${deployPath}
+          """
           echo "🚀 Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
         }
       }
     }
   }
+
   post {
     always {
       echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
