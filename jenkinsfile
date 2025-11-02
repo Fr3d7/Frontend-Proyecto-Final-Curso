@@ -23,7 +23,9 @@ pipeline {
         }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
-          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
+          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']],
+          submodules: true,
+          extensions: [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]]
         ])
       }
     }
