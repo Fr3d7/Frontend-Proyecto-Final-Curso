@@ -40,7 +40,7 @@ pipeline {
               echo Verificando archivos test...
               dir /b "${env.APP_DIR}\\src\\*.test.js" 2>nul || echo Advertencia: No se encontraron archivos test.js
               echo.
-              echo Verificando archivos fuente - sin tests:
+              echo Verificando archivos fuente sin tests
               dir /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " || echo Advertencia: No se encontraron archivos fuente
             )
           """
@@ -76,23 +76,23 @@ pipeline {
     }
     stage('Verify coverage file') {
       steps {
-        powershell """
-          `$coveragePath = "${env.APP_DIR}/coverage/lcov.info"
-          if (-not (Test-Path `$coveragePath)) { 
-            Write-Error "No se generó `$coveragePath"; 
+        powershell '''
+          $coveragePath = "login-registration/coverage/lcov.info"
+          if (-not (Test-Path $coveragePath)) { 
+            Write-Error "No se generó $coveragePath"; 
             exit 1 
           }
-          `$s = (Get-Item `$coveragePath).Length
-          if (`$s -le 20) { 
-            Write-Error "LCOV demasiado pequeño (`$s bytes)"; 
+          $s = (Get-Item $coveragePath).Length
+          if ($s -le 20) { 
+            Write-Error "LCOV demasiado pequeño ($s bytes)"; 
             exit 1 
           }
-          Write-Host "LCOV OK (`$s bytes)"
+          Write-Host "LCOV OK ($s bytes)"
           # Copiar coverage a raíz para SonarQube
           if (-not (Test-Path "coverage")) {
             New-Item -ItemType Directory -Path "coverage" -Force | Out-Null
           }
-          Copy-Item -Path `$coveragePath -Destination "coverage/lcov.info" -Force
+          Copy-Item -Path $coveragePath -Destination "coverage/lcov.info" -Force
         """
       }
     }
