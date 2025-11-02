@@ -126,6 +126,7 @@ pipeline {
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
+                -Dsonar.branch.name=${PIPE_BRANCH} ^
                 -Dsonar.sources=${env.APP_DIR}/src ^
                 -Dsonar.tests=${env.APP_DIR}/src ^
                 -Dsonar.sourceEncoding=UTF-8 ^
