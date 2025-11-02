@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 
@@ -97,35 +97,38 @@ describe('App Component - Gestión de Proyectos', () => {
     test('debe abrir el modal de nuevo proyecto', async () => {
       await renderAuthenticatedApp();
 
-      // Hay un botón y luego un h2 con el mismo texto, buscar el botón específicamente
-      const newProjectButtons = screen.getAllByText('Nuevo Proyecto');
-      const button = newProjectButtons.find(el => el.tagName === 'BUTTON');
-      fireEvent.click(button);
+      // Buscar el botón específicamente usando role
+      const newProjectButton = screen.getByRole('button', { name: /nuevo proyecto/i });
+      fireEvent.click(newProjectButton);
 
-      await waitFor(() => {
-        // Ahora buscar el h2 del modal
-        const modalTitle = screen.getByRole('heading', { name: 'Nuevo Proyecto' });
-        expect(modalTitle).toBeInTheDocument();
-        expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/descripción/i)).toBeInTheDocument();
-      });
+      // Esperar a que aparezca el modal y usar within para scoping
+      const modal = await screen.findByRole('dialog');
+      expect(modal).toBeInTheDocument();
+      
+      const modalTitle = within(modal).getByRole('heading', { name: /nuevo proyecto/i });
+      expect(modalTitle).toBeInTheDocument();
+      
+      // Buscar inputs dentro del modal para evitar ambigüedad
+      expect(within(modal).getByLabelText(/nombre/i)).toBeInTheDocument();
+      expect(within(modal).getByLabelText(/descripción/i)).toBeInTheDocument();
     });
 
     test('debe crear un nuevo proyecto con datos válidos', async () => {
       await renderAuthenticatedApp();
 
-      const newProjectButton = screen.getByText('Nuevo Proyecto');
+      const newProjectButton = screen.getByRole('button', { name: /nuevo proyecto/i });
       fireEvent.click(newProjectButton);
 
-      await waitFor(() => {
-        expect(screen.getByText('Nuevo Proyecto')).toBeInTheDocument();
-      });
+      // Esperar a que aparezca el modal
+      const modal = await screen.findByRole('dialog');
+      expect(modal).toBeInTheDocument();
 
-      const nameInput = screen.getByLabelText(/nombre/i);
-      const descriptionInput = screen.getByLabelText(/descripción/i);
-      const startDateInput = screen.getByLabelText(/fecha inicio/i);
-      const endDateInput = screen.getByLabelText(/fecha fin/i);
-      const saveButton = screen.getByText('Guardar');
+      // Buscar inputs dentro del modal para evitar ambigüedad
+      const nameInput = within(modal).getByLabelText(/nombre/i);
+      const descriptionInput = within(modal).getByLabelText(/descripción/i);
+      const startDateInput = within(modal).getByLabelText(/fecha inicio/i);
+      const endDateInput = within(modal).getByLabelText(/fecha fin/i);
+      const saveButton = within(modal).getByText('Guardar');
 
       await userEvent.type(nameInput, 'Nuevo Proyecto Test');
       await userEvent.type(descriptionInput, 'Descripción del nuevo proyecto');
@@ -146,14 +149,11 @@ describe('App Component - Gestión de Proyectos', () => {
     test('debe validar que el nombre del proyecto no esté vacío', async () => {
       await renderAuthenticatedApp();
 
-      const newProjectButton = screen.getByText('Nuevo Proyecto');
+      const newProjectButton = screen.getByRole('button', { name: /nuevo proyecto/i });
       fireEvent.click(newProjectButton);
 
-      await waitFor(() => {
-        expect(screen.getByText('Nuevo Proyecto')).toBeInTheDocument();
-      });
-
-      const saveButton = screen.getByText('Guardar');
+      const modal = await screen.findByRole('dialog');
+      const saveButton = within(modal).getByText('Guardar');
       fireEvent.click(saveButton);
 
       // El input debe estar marcado como required, por lo que el navegador impedirá el envío
@@ -168,18 +168,17 @@ describe('App Component - Gestión de Proyectos', () => {
     test('debe cerrar el modal al hacer clic en Cancelar', async () => {
       await renderAuthenticatedApp();
 
-      const newProjectButton = screen.getByText('Nuevo Proyecto');
+      const newProjectButton = screen.getByRole('button', { name: /nuevo proyecto/i });
       fireEvent.click(newProjectButton);
 
-      await waitFor(() => {
-        expect(screen.getByText('Nuevo Proyecto')).toBeInTheDocument();
-      });
+      const modal = await screen.findByRole('dialog');
+      expect(modal).toBeInTheDocument();
 
-      const cancelButton = screen.getByText('Cancelar');
+      const cancelButton = within(modal).getByText('Cancelar');
       fireEvent.click(cancelButton);
 
       await waitFor(() => {
-        expect(screen.queryByText('Nuevo Proyecto')).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       });
     });
   });
