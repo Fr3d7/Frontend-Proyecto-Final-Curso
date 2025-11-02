@@ -23,10 +23,12 @@ pipeline {
         }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
-          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']],
-          submodules: true,
-          extensions: [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]]
+          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
+        // Inicializar y actualizar submodules explícitamente
+        bat '''
+          git submodule update --init --recursive
+        '''
       }
     }
     stage('Install dependencies') {
