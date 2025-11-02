@@ -48,24 +48,10 @@ pipeline {
     stage('Seed minimal test if missing') {
       steps {
         dir("${APP_DIR}") {
+          // IMPORTANTE: Node -e en UNA sola línea para evitar que CMD intente ejecutar fs.* como comandos
           bat '''
             chcp 65001 >NUL
-            if not exist src mkdir src
-
-            rem ====== Fuente mínima ======
-            if not exist src\\sum.js (
-              echo export function sum(a,b){return a+b;} > src\\sum.js
-            )
-
-            rem ====== Test mínimo ======
-            if not exist src\\sum.test.js (
-              > src\\sum.test.js (
-                echo import {sum} from './sum';
-                echo test('sum 2+^3=5', () => { expect(sum(2,3)).toBe(5); });
-              )
-            )
-
-            echo Smoke test sembrado.
+            node -e "const fs=require('fs');fs.mkdirSync('src',{recursive:true});if(!fs.existsSync('src/sum.js')){fs.writeFileSync('src/sum.js','export function sum(a,b){return a+b;}');}if(!fs.existsSync('src/sum.test.js')){fs.writeFileSync('src/sum.test.js','import {sum} from \\'./sum\\';test(\\'sum 2+3=5\\',()=>{expect(sum(2,3)).toBe(5);});');}console.log('Smoke test listo');"
           '''
         }
       }
@@ -79,13 +65,16 @@ pipeline {
             npx react-scripts test --ci --watchAll=false --runInBand ^
               --coverage --coverageReporters=lcov --coverageReporters=text-summary ^
               --coverageDirectory=coverage --collectCoverageFrom=src/**/*.{js,jsx,ts,tsx} ^
-              src\\sum.test.js
+              src/sum.test.js
 
             if not exist coverage\\lcov.info (
               echo ERROR: NO existe coverage\\lcov.info
               exit /b 1
             )
-            for %%I in (coverage\\lcov.info) do @echo LCOV bytes: %%~zI & if "%%~zI"=="0" exit /b 1
+            for %%I in (coverage\\lcov.info) do @(
+              echo LCOV bytes: %%~zI
+              if "%%~zI"=="0" exit /b 1
+            )
           '''
         }
       }
