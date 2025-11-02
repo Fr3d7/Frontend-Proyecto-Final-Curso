@@ -43,8 +43,8 @@ pipeline {
               echo Verificando archivos fuente sin tests
               dir /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " || echo Advertencia: No se encontraron archivos fuente
             )
-          """
-        }
+          '''
+      }
       }
     }
     stage('Install dependencies') {
@@ -93,7 +93,7 @@ pipeline {
             New-Item -ItemType Directory -Path "coverage" -Force | Out-Null
           }
           Copy-Item -Path $coveragePath -Destination "coverage/lcov.info" -Force
-        """
+        '''
       }
     }
     stage('Build app') {
@@ -123,8 +123,8 @@ pipeline {
             ) else (
               echo ERROR: coverage\\lcov.info no encontrado
             )
-          """
-        }
+          '''
+      }
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
             bat """
@@ -143,8 +143,8 @@ pipeline {
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
-            """
-          }
+            '''
+      }
         }
       }
     }
@@ -171,8 +171,8 @@ pipeline {
             bat """
               if not exist ${deployPath} mkdir ${deployPath}
               xcopy /E /I /Y build ${deployPath}
-            """
-          }
+            '''
+      }
           echo "🚀 Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
         }
       }
