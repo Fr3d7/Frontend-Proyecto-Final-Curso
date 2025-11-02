@@ -12,13 +12,13 @@ pipeline {
   }
 
   environment {
-    // Detecta la rama: Multibranch > parámetro > nombre del job
+    // Detecta la rama: Multibranch > parÃ¡metro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
 
     // Usa el tool configurado en "Global Tool Configuration"
-    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
+    // (asegÃºrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
     SCANNER_HOME = tool 'sonar-scanner-win'
 
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
@@ -28,7 +28,7 @@ pipeline {
     stage('Checkout') {
       steps {
         script {
-          echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+          echo "ðŸ“¦ Proyecto: ${env.PROJECT_KEY} | ðŸ§µ Rama destino: ${env.PIPE_BRANCH}"
         }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
@@ -108,7 +108,7 @@ pipeline {
             if not exist ${deployPath} mkdir ${deployPath}
             xcopy /E /I /Y build ${deployPath}
           """
-          echo "🚀 Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
+          echo "ðŸš€ Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
         }
       }
     }
@@ -116,7 +116,7 @@ pipeline {
 
   post {
     always {
-      echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
+      echo "ðŸ Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
     }
   }
 }
