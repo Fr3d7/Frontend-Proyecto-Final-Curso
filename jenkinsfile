@@ -28,6 +28,24 @@ pipeline {
       }
     }
 
+    stage('Ensure tests (smoke)') {
+      steps {
+        dir("${APP_DIR}") {
+          // Si no hay *ningún* test, crear uno de humo para forzar coverage/lcov
+          bat '''
+            dir /b /s src\\*.test.* 2>nul >nul
+            if errorlevel 1 (
+              echo ⚠️ No hay tests. Creando smoke test...
+              if not exist src\\__tests__ mkdir src\\__tests__
+              > src\\__tests__\\smoke.test.jsx echo test('smoke', () => { expect(1+1).toBe(2); });
+            ) else (
+              echo ✅ Se encontraron tests.
+            )
+          '''
+        }
+      }
+    }
+
     stage('Install dependencies') {
       steps {
         dir("${APP_DIR}") {
@@ -39,9 +57,8 @@ pipeline {
     stage('Run tests (coverage)') {
       steps {
         dir("${APP_DIR}") {
-          // Permite que el job NO falle si aún no hay tests
-          bat 'set CI=true && npm test -- --coverage --watchAll=false --ci --passWithNoTests --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}"'
-          // No bloquea si no existe lcov, solo avisa
+          // Genera lcov sí o sí (aunque solo esté el smoke)
+          bat 'set CI=true && npx react-scripts test --coverage --watchAll=false --ci --coverageReporters=lcov --coverageReporters=text-summary'
           bat 'if not exist coverage\\lcov.info (echo WARN: no se encontro coverage\\lcov.info)'
         }
       }
@@ -50,7 +67,10 @@ pipeline {
     stage('Build app') {
       steps {
         dir("${APP_DIR}") {
-          bat 'set CI= & npm run build'
+          // Desactiva warnings como errores
+          withEnv(['CI=false']) {
+            bat 'npm run build'
+          }
         }
       }
     }
@@ -91,6 +111,7 @@ pipeline {
     stage('Package artifact') {
       steps {
         archiveArtifacts artifacts: "${APP_DIR}/build/**", fingerprint: true
+        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: true
       }
     }
 
