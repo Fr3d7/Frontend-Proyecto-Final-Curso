@@ -1,66 +1,106 @@
 pipeline {
   agent any
-
   options {
     skipDefaultCheckout(true)
     ansiColor('xterm')
     timestamps()
   }
-
   parameters {
     choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
   }
-
   environment {
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool 'sonar-scanner-win'     // Debe existir en Global Tool Config
+    SCANNER_HOME = tool 'sonar-scanner-win'
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
-
   stages {
     stage('Checkout') {
       steps {
-        echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+        script {
+          echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+        }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
+        // Verificar que login-registration existe
+        script {
+          bat '''
+            if not exist login-registration (
+              echo ERROR: login-registration no encontrado después del checkout
+              echo Listando directorios...
+              dir /b
+              exit /b 1
+            )
+            echo login-registration encontrado correctamente
+            if exist login-registration\\src (
+              echo Verificando archivos test...
+              dir /b login-registration\\src\\*.test.js 2>nul || echo Advertencia: No se encontraron archivos test.js
+            )
+          '''
+        }
       }
     }
-
     stage('Install dependencies') {
       steps {
-        bat 'npm ci || npm install'
+        dir('login-registration') {
+          bat 'npm ci || npm install'
+        }
       }
     }
-
-    stage('Run tests (coverage via CRA)') {
+    stage('Run tests (coverage)') {
       steps {
-        // CRA maneja CSS/JSX y genera coverage/lcov.info
-        bat '''
-          set CI=true
-          npm test -- --coverage --watchAll=false --ci --passWithNoTests ^
-            --coverageReporters=lcov ^
-            --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-            --testPathIgnorePatterns="/node_modules/","/build/"
-        '''
-        // Falla si no hay LCOV o si está vacío (Windows-safe)
-        bat 'if not exist coverage\\lcov.info (echo ERROR: no coverage\\lcov.info && exit /b 1)'
-        bat 'forfiles /p coverage /m lcov.info /c "cmd /c if @fsize LEQ 20 (echo ERROR: LCOV too small ^(@fsize^ bytes^) && exit /b 1) else echo LCOV size=@fsize bytes"'
+        dir('login-registration') {
+          bat '''
+            set CI=true
+            REM Limpiar cache de Jest por si quedó alguna configuración antigua
+            npx --yes jest --clearCache || echo Cache limpia
+            echo Ejecutando tests con cobertura...
+            npm test -- ^
+              --coverage ^
+              --watchAll=false ^
+              --ci ^
+              --coverageReporters=lcov ^
+              --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
+              --testMatch="**/src/**/*.test.*"
+          '''
+        }
       }
     }
-
+    stage('Verify coverage file') {
+      steps {
+        powershell '''
+          $coveragePath = "login-registration/coverage/lcov.info"
+          if (-not (Test-Path $coveragePath)) { 
+            Write-Error "No se generó $coveragePath"; 
+            exit 1 
+          }
+          $s = (Get-Item $coveragePath).Length
+          if ($s -lt 500) { 
+            Write-Error "LCOV vacío o muy pequeño ($s bytes)"; 
+            exit 1 
+          }
+          Write-Output "LCOV size=$s bytes"
+          # Copiar coverage a raíz para SonarQube
+          if (-not (Test-Path "coverage")) {
+            New-Item -ItemType Directory -Path "coverage" -Force | Out-Null
+          }
+          Copy-Item -Path $coveragePath -Destination "coverage/lcov.info" -Force
+        '''
+      }
+    }
     stage('Build app') {
       steps {
-        bat '''
-          set CI=
-          npm run build
-        '''
+        dir('login-registration') {
+          bat '''
+            set CI=
+            npm run build
+          '''
+        }
       }
     }
-
     stage('SonarQube Analysis') {
       steps {
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
@@ -71,8 +111,8 @@ pipeline {
                 -Dsonar.projectName=${PROJECT_KEY} ^
                 -Dsonar.projectVersion=${BUILD_NUMBER} ^
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
-                -Dsonar.sources=src ^
-                -Dsonar.tests=src ^
+                -Dsonar.sources=login-registration/src ^
+                -Dsonar.tests=login-registration/src ^
                 -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},**/__tests__/** ^
                 -Dsonar.sourceEncoding=UTF-8 ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
@@ -83,7 +123,6 @@ pipeline {
         }
       }
     }
-
     stage('Quality Gate') {
       steps {
         timeout(time: 10, unit: 'MINUTES') {
@@ -91,28 +130,29 @@ pipeline {
         }
       }
     }
-
     stage('Package artifact') {
       steps {
-        archiveArtifacts artifacts: 'build/**', fingerprint: true
+        dir('login-registration') {
+          archiveArtifacts artifacts: 'build/**', fingerprint: true
+        }
       }
     }
-
     stage('Deploy') {
-      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
+      when { expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          bat """
-            if not exist ${deployPath} mkdir ${deployPath}
-            xcopy /E /I /Y build ${deployPath}
-          """
+          dir('login-registration') {
+            bat """
+              if not exist ${deployPath} mkdir ${deployPath}
+              xcopy /E /I /Y build ${deployPath}
+            """
+          }
           echo "🚀 Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
         }
       }
     }
   }
-
   post {
     always {
       echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
