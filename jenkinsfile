@@ -20,7 +20,6 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
@@ -34,39 +33,25 @@ pipeline {
     stage('Install dependencies') {
       steps {
         bat 'npm ci || npm install'
-        // Herramientas de test (idempotente)
-        bat 'npm ls jest || npm i -D jest babel-jest @babel/preset-env @babel/preset-react @babel/preset-typescript @testing-library/react @testing-library/jest-dom'
+        // Asegura librerías de testing que usamos en el smoke
+        bat 'npm ls @testing-library/react || npm i -D @testing-library/react @testing-library/jest-dom'
       }
     }
 
-    stage('Ensure Jest config + smoke test') {
+    stage('Clean conflicting Jest/Babel configs') {
       steps {
-        // Config de Babel (si no existe)
-        writeFile file: 'babel.config.cjs', text: '''
-module.exports = {
-  presets: [
-    ['@babel/preset-env', {targets: {node: 'current'}}],
-    ['@babel/preset-react', {runtime: 'automatic'}],
-    '@babel/preset-typescript',
-  ],
-};
-'''.stripIndent()
+        // Evita "Multiple configurations found": usamos la config de react-scripts
+        bat 'if exist jest.config.cjs del /f /q jest.config.cjs'
+        bat 'if exist jest.config.js  del /f /q jest.config.js'
+        bat 'if exist babel.config.cjs del /f /q babel.config.cjs'
+        bat 'if exist babel.config.js  del /f /q babel.config.js'
+      }
+    }
 
-        // Config de Jest (si no existe). OJO: regex con $ y backslashes.
-        writeFile file: 'jest.config.cjs', text: '''
-module.exports = {
-  testEnvironment: 'jsdom',
-  transform: { '^.+\\.[tj]sx?$': 'babel-jest' },
-  collectCoverage: true,
-  collectCoverageFrom: ['src/**/*.{js,jsx,ts,tsx}'],
-  coverageReporters: ['lcov','text-summary'],
-};
-'''.stripIndent()
-
-        // Crea carpeta de tests
+    stage('Ensure smoke test') {
+      steps {
         bat 'if not exist src\\__tests__\\ mkdir src\\__tests__'
-
-        // Test mínimo para garantizar >0% (no falla si ya tienes tests)
+        // Test mínimo para garantizar cobertura > 0 si no tienes tests
         writeFile file: 'src/__tests__/ci.smoke.test.jsx', text: '''
 import '@testing-library/jest-dom';
 test('smoke passes', () => { expect(1+1).toBe(2); });
@@ -74,12 +59,15 @@ test('smoke passes', () => { expect(1+1).toBe(2); });
       }
     }
 
-    stage('Run tests (coverage)') {
+    stage('Run tests (coverage via CRA)') {
       steps {
-        // Ejecutamos Jest directo (no dependemos de scripts del package.json)
-        bat 'npx jest --coverage --watchAll=false --ci --passWithNoTests'
-        // Verificación visible
-        bat 'type coverage\\lcov.info > NUL || (echo WARN: no se genero coverage\\lcov.info)'
+        // CRA maneja CSS y demases; esto genera coverage/lcov.info
+        bat '''
+          set CI=true
+          npm test -- --coverage --watchAll=false --passWithNoTests
+        '''
+        // Mensaje si no se generó coverage (no falla el build aquí)
+        bat 'if not exist coverage\\lcov.info (echo WARN: no se genero coverage\\lcov.info)'
       }
     }
 
@@ -130,7 +118,7 @@ test('smoke passes', () => { expect(1+1).toBe(2); });
     }
 
     stage('Deploy') {
-      when { expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
+      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
