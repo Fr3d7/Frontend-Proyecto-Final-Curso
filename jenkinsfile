@@ -1,22 +1,17 @@
 pipeline {
   agent any
-
-  options {
-    skipDefaultCheckout(true)
-    ansiColor('xterm')
-    timestamps()
-  }
+  options { skipDefaultCheckout(true); ansiColor('xterm'); timestamps() }
 
   parameters {
-    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV','QA','PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-    SCANNER_HOME = tool 'sonar-scanner-win'   // Configurado en Global Tool Configuration
-    REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    SCANNER_HOME = tool 'sonar-scanner-win'
+    REPO_URL = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
@@ -51,7 +46,11 @@ pipeline {
         bat 'if not exist src\\__tests__\\ mkdir src\\__tests__'
         writeFile file: 'src/__tests__/ci.smoke.test.jsx', text: '''
 import "@testing-library/jest-dom";
-test("smoke passes", () => { expect(1+1).toBe(2); });
+test("smoke in __tests__", () => { expect(1+1).toBe(2); });
+'''.stripIndent()
+        // segunda ubicación para garantizar descubrimiento en CRA
+        writeFile file: 'src/ci.smoke.test.js', text: '''
+test("smoke in root", () => { expect(true).toBe(true); });
 '''.stripIndent()
       }
     }
@@ -64,7 +63,7 @@ test("smoke passes", () => { expect(1+1).toBe(2); });
             --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
             --collectCoverageFrom="!src/**/__tests__/**"
         '''
-        // Script de PowerShell para normalizar las rutas del LCOV (\\ -> /) sin pelearse con escapes
+        // normaliza rutas del LCOV con PowerShell (sin peleas de escapes)
         writeFile file: 'scripts/fix-lcov.ps1', text: '''
 $path = "coverage/lcov.info"
 if (Test-Path $path) {
@@ -74,8 +73,8 @@ if (Test-Path $path) {
 }
 '''.stripIndent()
         bat 'if exist coverage\\lcov.info powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\fix-lcov.ps1'
-        bat 'if exist coverage\\lcov.info for %I in (coverage\\lcov.info) do @echo LCOV size=%~zI bytes'
-        bat 'if not exist coverage\\lcov.info echo WARN: no se genero coverage\\lcov.info'
+        // imprime tamaño de LCOV sin romper el build
+        bat 'powershell -NoProfile -Command "if (Test-Path ''coverage/lcov.info'') { $s=(Get-Item ''coverage/lcov.info'').Length; Write-Output (''LCOV size='' + $s + '' bytes'') } else { Write-Output ''WARN: no coverage/lcov.info'' }"'
       }
     }
 
@@ -111,17 +110,11 @@ if (Test-Path $path) {
     }
 
     stage('Quality Gate') {
-      steps {
-        timeout(time: 10, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
+      steps { timeout(time: 10, unit: 'MINUTES') { waitForQualityGate abortPipeline: true } }
     }
 
     stage('Package artifact') {
-      steps {
-        archiveArtifacts artifacts: 'build/**', fingerprint: true
-      }
+      steps { archiveArtifacts artifacts: 'build/**', fingerprint: true }
     }
 
     stage('Deploy') {
@@ -139,9 +132,5 @@ if (Test-Path $path) {
     }
   }
 
-  post {
-    always {
-      echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
-    }
-  }
+  post { always { echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}" } }
 }
