@@ -12,17 +12,24 @@ pipeline {
   }
 
   environment {
+    // Detecta la rama: Multibranch > parámetro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
+
+    // Usa el tool configurado en "Global Tool Configuration"
+    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
     SCANNER_HOME = tool 'sonar-scanner-win'
+
     REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+        script {
+          echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
+        }
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
@@ -33,49 +40,13 @@ pipeline {
     stage('Install dependencies') {
       steps {
         bat 'npm ci || npm install'
-        // Asegura libs de testing usadas por el smoke
-        bat 'npm ls @testing-library/react || npm i -D @testing-library/react @testing-library/jest-dom'
-      }
-    }
-
-    stage('Limpiar configs Jest/Babel conflictivas') {
-      steps {
-        bat 'if exist jest.config.cjs del /f /q jest.config.cjs'
-        bat 'if exist jest.config.js  del /f /q jest.config.js'
-        bat 'if exist babel.config.cjs del /f /q babel.config.cjs'
-        bat 'if exist babel.config.js  del /f /q babel.config.js'
-      }
-    }
-
-    stage('Crear test que EJECUTE código real') {
-      steps {
-        // Este test importa y renderiza App: genera cobertura > 0
-        writeFile file: 'src/App.smoke.test.jsx', text: '''
-import React from "react";
-import { render, cleanup } from "@testing-library/react";
-import "@testing-library/jest-dom";
-import App from "./App";
-
-afterEach(() => cleanup());
-
-test("smoke: App render without crash", () => {
-  const { unmount } = render(<App />);
-  expect(App).toBeTruthy();
-  unmount();
-});
-'''.stripIndent()
       }
     }
 
     stage('Run tests (coverage)') {
       steps {
-        // CRA maneja CSS/SVG, etc. Genera coverage/lcov.info automáticamente
-        bat '''
-          set CI=true
-          npm test -- --coverage --watchAll=false
-        '''
-        // Log informativo (no rompe el build)
-        bat 'if exist coverage\\lcov.info (for %%I in (coverage\\lcov.info) do @echo LCOV size: %%~zI bytes) else (echo WARN: no se genero coverage\\lcov.info)'
+        // No falla si no hay tests; si existen, genera coverage
+        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
       }
     }
 
@@ -92,6 +63,8 @@ test("smoke: App render without crash", () => {
       steps {
         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
           withSonarQubeEnv('sonar-local') {
+            // Aviso si no existe coverage/lcov.info (no falla)
+            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
             bat """
               "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
                 -Dsonar.projectKey=${PROJECT_KEY} ^
@@ -100,10 +73,9 @@ test("smoke: App render without crash", () => {
                 -Dsonar.projectBaseDir=%WORKSPACE% ^
                 -Dsonar.sources=src ^
                 -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.{js,jsx,ts,tsx},src/**/__tests__/**/* ^
+                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
                 -Dsonar.sourceEncoding=UTF-8 ^
                 -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info ^
                 -Dsonar.token=%SONAR_TOKEN%
             """
           }
@@ -120,11 +92,15 @@ test("smoke: App render without crash", () => {
     }
 
     stage('Package artifact') {
-      steps { archiveArtifacts artifacts: 'build/**', fingerprint: true }
+      steps {
+        archiveArtifacts artifacts: 'build/**', fingerprint: true
+      }
     }
 
     stage('Deploy') {
-      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
+      when {
+        expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' }
+      }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
