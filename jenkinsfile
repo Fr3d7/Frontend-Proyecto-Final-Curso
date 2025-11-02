@@ -48,7 +48,6 @@ pipeline {
 import "@testing-library/jest-dom";
 test("smoke in __tests__", () => { expect(1+1).toBe(2); });
 '''.stripIndent()
-        // segunda ubicación para garantizar descubrimiento en CRA
         writeFile file: 'src/ci.smoke.test.js', text: '''
 test("smoke in root", () => { expect(true).toBe(true); });
 '''.stripIndent()
@@ -60,10 +59,12 @@ test("smoke in root", () => { expect(true).toBe(true); });
         bat '''
           set CI=true
           npm test -- --coverage --watchAll=false --passWithNoTests ^
+            --testMatch="<rootDir>/src/**/?(*.)+(spec|test).[jt]s?(x)","<rootDir>/src/**/__tests__/**/*.[jt]s?(x)" ^
             --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-            --collectCoverageFrom="!src/**/__tests__/**"
+            --collectCoverageFrom="!src/**/__tests__/**" ^
+            --coverageReporters=lcov,text
         '''
-        // normaliza rutas del LCOV con PowerShell (sin peleas de escapes)
+        // normaliza las barras en lcov (para Sonar)
         writeFile file: 'scripts/fix-lcov.ps1', text: '''
 $path = "coverage/lcov.info"
 if (Test-Path $path) {
@@ -73,8 +74,15 @@ if (Test-Path $path) {
 }
 '''.stripIndent()
         bat 'if exist coverage\\lcov.info powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\fix-lcov.ps1'
-        // imprime tamaño de LCOV sin romper el build
-        bat 'powershell -NoProfile -Command "if (Test-Path ''coverage/lcov.info'') { $s=(Get-Item ''coverage/lcov.info'').Length; Write-Output (''LCOV size='' + $s + '' bytes'') } else { Write-Output ''WARN: no coverage/lcov.info'' }"'
+
+        // imprime tamaño del LCOV (sin PowerShell quotes raros)
+        bat '''
+          if exist coverage\\lcov.info (
+            for %%A in ("coverage\\lcov.info") do @echo LCOV size=%%~zA bytes
+          ) else (
+            echo WARN: no coverage\\lcov.info
+          )
+        '''
       }
     }
 
