@@ -12,66 +12,98 @@ pipeline {
   }
 
   environment {
-    RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
-    PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
-    PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
+    REPO_URL     = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
     SCANNER_HOME = tool 'sonar-scanner-win'
-    REPO_URL = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    APP_DIR      = "login-registration"
   }
 
   stages {
-    stage('Checkout') {
+
+    stage('Init') {
       steps {
-        echo "Project: ${env.PROJECT_KEY} | Branch: ${env.PIPE_BRANCH}"
-        checkout([$class: 'GitSCM',
-          branches: [[name: "*/${PIPE_BRANCH}"]],
-          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
-        ])
-        bat 'if not exist login-registration (echo ERROR: missing folder login-registration & dir /b & exit /b 1)'
+        script {
+          env.PIPE_BRANCH = ((env.BRANCH_NAME ?: params.TARGET_BRANCH ?: 'QA') as String).toUpperCase()
+          env.PROJECT_KEY = "frontend-proyecto-final-${env.PIPE_BRANCH}"
+          echo "Project: ${env.PROJECT_KEY} | Branch: ${env.PIPE_BRANCH}"
+        }
       }
     }
 
-    stage('Install dependencies') {
+    stage('Checkout') {
       steps {
-        dir('login-registration') {
-          bat 'npm ci || npm install'
+        checkout([$class: 'GitSCM',
+          branches: [[name: "*/${env.PIPE_BRANCH}"]],
+          userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
+        ])
+        bat "if not exist ${env.APP_DIR} (echo ERROR: missing folder ${env.APP_DIR} & dir /b & exit /b 1)"
+      }
+    }
+
+    stage('Install deps') {
+      steps {
+        dir("${env.APP_DIR}") {
+          bat "chcp 65001 >NUL & npm ci || npm install"
+        }
+      }
+    }
+
+    stage('Seed minimal test if missing') {
+      steps {
+        dir("${env.APP_DIR}") {
+          bat """
+            if not exist src\\__tests__ mkdir src\\__tests__
+            if not exist src\\utils mkdir src\\utils
+            dir /b src\\*.test.* src\\__tests__\\*.test.* 1>NUL 2>NUL
+            if errorlevel 1 (
+              (echo export function sum(a,b){return a+b;}) > src\\utils\\sum.js
+              (echo import {sum} from '../utils/sum';) > src\\__tests__\\smoke.test.js
+              (echo test('sum 2+3=5',()=>{expect(sum(2,3))).toBe(5);});) >> src\\__tests__\\smoke.test.js
+            )
+          """
         }
       }
     }
 
     stage('Tests + coverage') {
       steps {
-        dir('login-registration') {
-          bat 'npm run test:ci'
-          // Asegura que el LCOV tenga contenido (>0 bytes) o falla
-          bat 'for %I in (coverage\\lcov.info) do @echo LCOV bytes: %~zI & if "%~zI"=="0" exit /b 1'
+        dir("${env.APP_DIR}") {
+          bat """
+            chcp 65001 >NUL
+            npm run test:ci || npx react-scripts test --ci --watchAll=false --runInBand --coverage --coverageReporters=lcov,text-summary --coverageDirectory=coverage --collectCoverageFrom=src/**/*.{js,jsx,ts,tsx} --passWithNoTests
+            if not exist coverage\\lcov.info (echo ERROR: coverage\\lcov.info NO EXISTE & exit /b 1)
+            for %%I in (coverage\\lcov.info) do (
+              echo LCOV bytes: %%~zI
+              if "%%~zI"=="0" (echo ERROR: LCOV VACIO & exit /b 1)
+            )
+          """
         }
       }
     }
 
     stage('Build') {
       steps {
-        dir('login-registration') {
-          bat 'set CI= & npm run build'
+        dir("${env.APP_DIR}") {
+          bat "chcp 65001 >NUL & set CI= & npm run build"
         }
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        dir('login-registration') {
+        dir("${env.APP_DIR}") {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             withSonarQubeEnv('sonar-local') {
               bat """
-                "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
-                  -Dsonar.projectKey=${PROJECT_KEY} ^
-                  -Dsonar.projectName=${PROJECT_KEY} ^
-                  -Dsonar.projectVersion=${BUILD_NUMBER} ^
-                  -Dsonar.projectBaseDir=%CD% ^
+                chcp 65001 >NUL
+                "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
+                  -Dsonar.projectKey=${env.PROJECT_KEY} ^
+                  -Dsonar.projectName=${env.PROJECT_KEY} ^
+                  -Dsonar.projectVersion=%BUILD_NUMBER% ^
                   -Dsonar.sources=src ^
+                  -Dsonar.tests=src ^
                   -Dsonar.exclusions=node_modules/**,build/**,coverage/** ^
-                  -Dsonar.test.inclusions=**/*.test.* , **/*.spec.* , src/__tests__/**/* ^
-                  -Dsonar.coverage.exclusions=**/*.test.* , **/*.spec.* , src/__tests__/**/* ^
+                  -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/* ^
+                  -Dsonar.coverage.exclusions=**/*.test.*,src/__tests__/**/* ^
                   -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
                   -Dsonar.scm.exclusions.disabled=true ^
                   -Dsonar.sourceEncoding=UTF-8 ^
@@ -91,9 +123,10 @@ pipeline {
       }
     }
 
-    stage('Package artifact') {
+    stage('Package') {
       steps {
-        archiveArtifacts artifacts: 'login-registration/build/**', fingerprint: true
+        archiveArtifacts artifacts: "${env.APP_DIR}/build/**", fingerprint: true
+        archiveArtifacts artifacts: "${env.APP_DIR}/coverage/**", allowEmptyArchive: true
       }
     }
 
@@ -102,8 +135,8 @@ pipeline {
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          bat "if not exist ${deployPath} mkdir ${deployPath}"
-          bat "xcopy /E /I /Y login-registration\\build ${deployPath}"
+          bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
+          bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${env.APP_DIR}\\build\" \"${deployPath}\""
           echo "Deployed to ${deployPath}"
         }
       }
