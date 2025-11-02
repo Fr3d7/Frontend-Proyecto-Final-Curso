@@ -55,11 +55,16 @@ pipeline {
         dir('login-registration') {
           bat '''
             set CI=true
-            echo Ejecutando tests con coverage...
-            npm test -- --coverage --watchAll=false --ci ^
+            REM Limpiar cache de Jest por si quedó alguna configuración antigua
+            npx --yes jest --clearCache || echo Cache limpia
+            echo Ejecutando tests con cobertura...
+            npm test -- ^
+              --coverage ^
+              --watchAll=false ^
+              --ci ^
               --coverageReporters=lcov ^
               --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-              --testPathIgnorePatterns="/node_modules/","/build/"
+              --testMatch="**/src/**/*.test.*"
           '''
         }
       }
