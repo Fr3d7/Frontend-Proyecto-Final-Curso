@@ -1,6 +1,5 @@
 pipeline {
   agent any
-
   options {
     skipDefaultCheckout(true)
     ansiColor('xterm')
@@ -8,76 +7,127 @@ pipeline {
   }
 
   parameters {
-    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV','QA','PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
-    // Detecta la rama: Multibranch > parÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡metro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
 
-    // Usa el tool configurado en "Global Tool Configuration"
-    // (asegÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
     SCANNER_HOME = tool 'sonar-scanner-win'
-
-    REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    REPO_URL     = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    APP_DIR      = "login-registration"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        script {
-          echo "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Proyecto: ${env.PROJECT_KEY} | ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµ Rama destino: ${env.PIPE_BRANCH}"
-        }
+        echo "ðŸ“¦ Proyecto: ${env.PROJECT_KEY} | ðŸ§µ Rama destino: ${env.PIPE_BRANCH}"
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
+        bat 'if not exist %APP_DIR% (echo ERROR: falta %APP_DIR% && dir /b && exit /b 1)'
       }
     }
 
     stage('Install dependencies') {
       steps {
-        bat 'npm ci || npm install'
+        dir("${APP_DIR}") {
+          bat 'npm ci || npm install'
+        }
       }
     }
 
     stage('Run tests (coverage)') {
       steps {
-        // No falla si no hay tests; si existen, genera coverage
-        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
+        dir("${APP_DIR}") {
+          bat '''
+            echo === VERIFICANDO DIRECTORIO ACTUAL ===
+            cd
+            echo Directorio actual: %CD%
+            
+            echo === LISTANDO ARCHIVOS DE TEST EN SRC ===
+            if exist src (
+              dir /b src\\*.test.js src\\*.test.jsx 2>nul || echo No se encontraron .test.js o .test.jsx en src
+              if exist src\\__tests__ (
+                dir /b src\\__tests__\\*.test.* 2>nul || echo No se encontraron tests en __tests__
+              )
+            ) else (
+              echo ERROR: La carpeta src no existe
+              dir /b
+              exit /b 1
+            )
+            
+            echo === EJECUTANDO TESTS CON COBERTURA ===
+            set CI=true
+            set NODE_ENV=test
+            npm run test:ci || exit /b 0
+            
+            echo === VERIFICANDO COVERAGE GENERADO ===
+            if exist coverage\\lcov.info (
+              for %%I in (coverage\\lcov.info) do @echo coverage\\lcov.info generado: %%~zI bytes
+              echo === PRIMERAS 30 LINEAS DE lcov.info ===
+              powershell -Command "Get-Content coverage\\lcov.info -TotalCount 30"
+            ) else (
+              echo ERROR CRITICO: coverage\\lcov.info NO SE GENERO
+              echo Listando contenido de coverage:
+              dir /b coverage 2>nul || echo No existe la carpeta coverage
+              exit /b 1
+            )
+          '''
+        }
       }
     }
 
     stage('Build app') {
       steps {
-        bat '''
-          set CI=
-          npm run build
-        '''
+        dir("${APP_DIR}") {
+          withEnv(['CI=false']) {
+            bat 'npm run build'
+          }
+        }
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-          withSonarQubeEnv('sonar-local') {
-            // Aviso si no existe coverage/lcov.info (no falla)
-            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
-            bat """
-              "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
-                -Dsonar.projectKey=${PROJECT_KEY} ^
-                -Dsonar.projectName=${PROJECT_KEY} ^
-                -Dsonar.projectVersion=${BUILD_NUMBER} ^
-                -Dsonar.projectBaseDir=%WORKSPACE% ^
-                -Dsonar.sources=src ^
-                -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
-                -Dsonar.sourceEncoding=UTF-8 ^
-                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                -Dsonar.token=%SONAR_TOKEN%
-            """
+        dir("${APP_DIR}") {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('sonar-local') {
+              bat """
+                echo === VERIFICACION FINAL ANTES DE SONAR ===
+                if exist coverage\\lcov.info (
+                  for %%I in (coverage\\lcov.info) do @echo coverage\\lcov.info listo: %%~zI bytes en %%~fI
+                  echo === RUTA ABSOLUTA DEL LCOV ===
+                  for %%I in (coverage\\lcov.info) do @echo %%~fI
+                ) else (
+                  echo ERROR CRITICO: coverage\\lcov.info NO EXISTE
+                  dir /s /b coverage 2>nul
+                  exit /b 1
+                )
+                
+                echo === EJECUTANDO SONAR SCANNER ===
+                "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
+                  -Dsonar.projectKey=${PROJECT_KEY} ^
+                  -Dsonar.projectName=${PROJECT_KEY} ^
+                  -Dsonar.projectVersion=${BUILD_NUMBER} ^
+                  -Dsonar.projectBaseDir=%CD% ^
+                  -Dsonar.sources=src ^
+                  -Dsonar.tests=src ^
+                  -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/* ^
+                  -Dsonar.exclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/*,node_modules/**,build/**,coverage/**,src/index.js,src/reportWebVitals.js,src/setupTests.js ^
+                  -Dsonar.sourceEncoding=UTF-8 ^
+                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                  -Dsonar.coverage.exclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/*,src/index.js,src/reportWebVitals.js,src/setupTests.js ^
+                  -Dsonar.test.exclusions=node_modules/**,build/**,coverage/** ^
+                  -Dsonar.cpd.exclusions=**/*.test.js,**/*.spec.js,src/__tests__/**/* ^
+                  -Dsonar.token=%SONAR_TOKEN%
+                
+                echo === SONAR SCANNER COMPLETADO ===
+              """
+            }
           }
         }
       }
@@ -93,22 +143,19 @@ pipeline {
 
     stage('Package artifact') {
       steps {
-        archiveArtifacts artifacts: 'build/**', fingerprint: true
+        archiveArtifacts artifacts: "${APP_DIR}/build/**", fingerprint: true
+        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: true
       }
     }
 
     stage('Deploy') {
-      when {
-        expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' }
-      }
+      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          bat """
-            if not exist ${deployPath} mkdir ${deployPath}
-            xcopy /E /I /Y build ${deployPath}
-          """
-          echo "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
+          bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
+          bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${APP_DIR}\\build\" \"${deployPath}\""
+          echo "ðŸš€ Desplegado a ${deployPath}"
         }
       }
     }
@@ -116,7 +163,7 @@ pipeline {
 
   post {
     always {
-      echo "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
+      echo "ðŸ Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
     }
   }
 }
