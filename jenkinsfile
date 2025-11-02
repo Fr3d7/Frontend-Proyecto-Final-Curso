@@ -42,7 +42,8 @@ pipeline {
             npm test -- --coverage --watchAll=false --ci ^
               --coverageReporters=lcov ^
               --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-              --testPathIgnorePatterns="/node_modules/","/build/"
+              --testPathIgnorePatterns="/node_modules/","/build/" ^
+              --testMatch="**/*.test.{js,jsx}" --passWithNoTests=false
           '''
         }
       }
