@@ -25,6 +25,22 @@ pipeline {
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
+        // Verificar que login-registration existe
+        script {
+          bat '''
+            if not exist login-registration (
+              echo ERROR: login-registration no encontrado después del checkout
+              echo Listando directorios...
+              dir /b
+              exit /b 1
+            )
+            echo login-registration encontrado correctamente
+            if exist login-registration\\src (
+              echo Verificando archivos test...
+              dir /b login-registration\\src\\*.test.js 2>nul || echo Advertencia: No se encontraron archivos test.js
+            )
+          '''
+        }
       }
     }
     stage('Install dependencies') {
@@ -39,11 +55,11 @@ pipeline {
         dir('login-registration') {
           bat '''
             set CI=true
+            echo Ejecutando tests con coverage...
             npm test -- --coverage --watchAll=false --ci ^
               --coverageReporters=lcov ^
               --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" ^
-              --testPathIgnorePatterns="/node_modules/","/build/" ^
-              --testMatch="**/*.test.{js,jsx}" --passWithNoTests=false
+              --testPathIgnorePatterns="/node_modules/","/build/"
           '''
         }
       }
