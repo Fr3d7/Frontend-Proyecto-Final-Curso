@@ -30,7 +30,6 @@
     "eject": "react-scripts eject"
   },
   "jest": {
-    "roots": ["<rootDir>/src"],
     "testMatch": ["<rootDir>/src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
     "coverageThreshold": {
       "global": {
