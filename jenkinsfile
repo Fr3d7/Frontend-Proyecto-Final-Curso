@@ -40,7 +40,7 @@ pipeline {
               echo Verificando archivos test...
               dir /b "${env.APP_DIR}\\src\\*.test.js" 2>nul || echo Advertencia: No se encontraron archivos test.js
               echo.
-              echo Verificando archivos fuente - sin tests:
+              echo Verificando archivos fuente sin tests
               dir /b "${env.APP_DIR}\\src\\*.js" "${env.APP_DIR}\\src\\*.jsx" 2>nul | findstr /v /i "\\.test\\. " || echo Advertencia: No se encontraron archivos fuente
             )
           """
