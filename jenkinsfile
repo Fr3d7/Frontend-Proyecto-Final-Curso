@@ -23,7 +23,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        echo "Ã°Å¸â€œÂ¦ Proyecto: ${env.PROJECT_KEY} | Ã°Å¸Â§Âµ Rama destino: ${env.PIPE_BRANCH}"
+        echo "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Proyecto: ${env.PROJECT_KEY} | ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Âµ Rama destino: ${env.PIPE_BRANCH}"
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
@@ -155,7 +155,7 @@ pipeline {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
           bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
           bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${APP_DIR}\\build\" \"${deployPath}\""
-          echo "Ã°Å¸Å¡â‚¬ Desplegado a ${deployPath}"
+          echo "ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Desplegado a ${deployPath}"
         }
       }
     }
@@ -163,7 +163,7 @@ pipeline {
 
   post {
     always {
-      echo "Ã°Å¸ÂÂ Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
+      echo "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
     }
   }
 }
