@@ -1,83 +1,80 @@
 pipeline {
   agent any
-
-  options {
-    skipDefaultCheckout(true)
-    ansiColor('xterm')
-    timestamps()
-  }
+  options { skipDefaultCheckout(true); ansiColor('xterm'); timestamps() }
 
   parameters {
-    choice(name: 'TARGET_BRANCH', choices: ['DEV', 'QA', 'PROD'], description: 'Solo para jobs NO multibranch.')
+    choice(name: 'TARGET_BRANCH', choices: ['DEV','QA','PROD'], description: 'Solo para jobs NO multibranch.')
   }
 
   environment {
-    // Detecta la rama: Multibranch > parámetro > nombre del job
     RAW_BRANCH  = "${env.BRANCH_NAME ?: (params.TARGET_BRANCH ?: (env.JOB_BASE_NAME?.toLowerCase()?.contains('prod') ? 'PROD' : (env.JOB_BASE_NAME?.toLowerCase()?.contains('qa') ? 'QA' : 'DEV')))}"
     PIPE_BRANCH = "${RAW_BRANCH.toUpperCase()}"
     PROJECT_KEY = "frontend-proyecto-final-${PIPE_BRANCH}"
-
-    // Usa el tool configurado en "Global Tool Configuration"
-    // (asegúrate de que exista un tool Sonar llamado exactamente 'sonar-scanner-win')
     SCANNER_HOME = tool 'sonar-scanner-win'
-
-    REPO_URL    = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    REPO_URL = "https://github.com/Fr3d7/Frontend-Proyecto-Final-Curso.git"
+    APP_DIR = "login-registration"
   }
 
   stages {
     stage('Checkout') {
       steps {
-        script {
-          echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama destino: ${env.PIPE_BRANCH}"
-        }
+        echo "📦 Proyecto: ${env.PROJECT_KEY} | 🧵 Rama: ${env.PIPE_BRANCH}"
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
         ])
+        bat 'if not exist %APP_DIR% (echo ERROR: falta %APP_DIR% && dir /b && exit /b 1)'
       }
     }
 
     stage('Install dependencies') {
       steps {
-        bat 'npm ci || npm install'
+        dir("${APP_DIR}") {
+          bat 'npm ci || npm install'
+        }
       }
     }
 
     stage('Run tests (coverage)') {
       steps {
-        // No falla si no hay tests; si existen, genera coverage
-        bat 'npm test -- --coverage --watchAll=false --ci --passWithNoTests'
+        dir("${APP_DIR}") {
+          // Si no quieres enmascarar ausencia de tests, quita --passWithNoTests
+          bat 'set CI=true && npm test -- --coverage --watchAll=false --ci'
+          // Asegura que realmente exista el lcov
+          bat 'if not exist coverage\\lcov.info (echo NO se genero coverage\\lcov.info && dir /s /b coverage && exit /b 1)'
+        }
       }
     }
 
     stage('Build app') {
       steps {
-        bat '''
-          set CI=
-          npm run build
-        '''
+        dir("${APP_DIR}") {
+          bat 'set CI= & npm run build'
+        }
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-          withSonarQubeEnv('sonar-local') {
-            // Aviso si no existe coverage/lcov.info (no falla)
-            bat 'if not exist coverage\\lcov.info (echo "WARN: no coverage\\lcov.info")'
-            bat """
-              "${SCANNER_HOME}\\bin\\sonar-scanner.bat" ^
-                -Dsonar.projectKey=${PROJECT_KEY} ^
-                -Dsonar.projectName=${PROJECT_KEY} ^
-                -Dsonar.projectVersion=${BUILD_NUMBER} ^
-                -Dsonar.projectBaseDir=%WORKSPACE% ^
-                -Dsonar.sources=src ^
-                -Dsonar.tests=src ^
-                -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
-                -Dsonar.sourceEncoding=UTF-8 ^
-                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                -Dsonar.token=%SONAR_TOKEN%
-            """
+        dir("${APP_DIR}") {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('sonar-local') {
+              // Usa el directorio de la app como base
+              bat """
+                "%SCANNER_HOME%\\bin\\sonar-scanner.bat" ^
+                  -Dsonar.projectKey=${PROJECT_KEY} ^
+                  -Dsonar.projectName=${PROJECT_KEY} ^
+                  -Dsonar.projectVersion=${BUILD_NUMBER} ^
+                  -Dsonar.projectBaseDir=%CD% ^
+                  -Dsonar.sources=src ^
+                  -Dsonar.tests=src ^
+                  -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js ^
+                  -Dsonar.exclusions=**/*.test.js,**/*.spec.js ^
+                  -Dsonar.sourceEncoding=UTF-8 ^
+                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
+                  -Dsonar.token=%SONAR_TOKEN%
+              """
+            }
           }
         }
       }
@@ -93,30 +90,25 @@ pipeline {
 
     stage('Package artifact') {
       steps {
-        archiveArtifacts artifacts: 'build/**', fingerprint: true
+        archiveArtifacts artifacts: "${APP_DIR}/build/**", fingerprint: true
+        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: false
       }
     }
 
     stage('Deploy') {
-      when {
-        expression { return env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' }
-      }
+      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
       steps {
         script {
           def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          bat """
-            if not exist ${deployPath} mkdir ${deployPath}
-            xcopy /E /I /Y build ${deployPath}
-          """
-          echo "🚀 Desplegado a ${deployPath} para rama ${env.PIPE_BRANCH}"
+          bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
+          bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${APP_DIR}\\build\" \"${deployPath}\""
+          echo "🚀 Desplegado a ${deployPath}"
         }
       }
     }
   }
 
   post {
-    always {
-      echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
-    }
+    always { echo "🏁 Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}" }
   }
 }
