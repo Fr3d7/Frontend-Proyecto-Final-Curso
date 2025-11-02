@@ -333,7 +333,7 @@ describe('App Component - Autenticación', () => {
         json: async () => mockResponse,
       });
 
-      render(<App />);
+  render(<App />);
 
       // Esperar a que se cargue el componente autenticado
       await waitFor(() => {
