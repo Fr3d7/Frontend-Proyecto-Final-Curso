@@ -26,10 +26,11 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:watch": "react-scripts test",
-    "test:ci": "react-scripts test --ci --watchAll=false --runInBand --coverage --coverageReporters=lcov,text-summary --collectCoverageFrom=src/**/*.{js,jsx,ts,tsx}",
+    "test:ci": "react-scripts test --ci --watchAll=false --runInBand --coverage --coverageReporters=lcov,text-summary --coverageDirectory=coverage --collectCoverageFrom=src/**/*.{js,jsx,ts,tsx}",
     "eject": "react-scripts eject"
   },
   "jest": {
+    "roots": ["<rootDir>/src"],
     "testMatch": ["<rootDir>/src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
     "coverageThreshold": {
       "global": {
