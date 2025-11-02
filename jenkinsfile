@@ -23,7 +23,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        echo "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Proyecto: ${env.PROJECT_KEY} | ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµ Rama destino: ${env.PIPE_BRANCH}"
+        echo "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Proyecto: ${env.PROJECT_KEY} | ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµ Rama destino: ${env.PIPE_BRANCH}"
         checkout([$class: 'GitSCM',
           branches: [[name: "*/${PIPE_BRANCH}"]],
           userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: 'github-creds']]
@@ -113,57 +113,3 @@ pipeline {
                   -Dsonar.projectKey=${PROJECT_KEY} ^
                   -Dsonar.projectName=${PROJECT_KEY} ^
                   -Dsonar.projectVersion=${BUILD_NUMBER} ^
-                  -Dsonar.projectBaseDir=%CD% ^
-                  -Dsonar.sources=src ^
-                  -Dsonar.tests=src ^
-                  -Dsonar.test.inclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/* ^
-                  -Dsonar.exclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/*,node_modules/**,build/**,coverage/**,src/index.js,src/reportWebVitals.js,src/setupTests.js ^
-                  -Dsonar.sourceEncoding=UTF-8 ^
-                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info ^
-                  -Dsonar.coverage.exclusions=**/*.test.js,**/*.spec.js,**/*.test.jsx,**/*.spec.jsx,src/__tests__/**/*,src/index.js,src/reportWebVitals.js,src/setupTests.js ^
-                  -Dsonar.test.exclusions=node_modules/**,build/**,coverage/** ^
-                  -Dsonar.cpd.exclusions=**/*.test.js,**/*.spec.js,src/__tests__/**/* ^
-                  -Dsonar.token=%SONAR_TOKEN%
-                
-                echo === SONAR SCANNER COMPLETADO ===
-              """
-            }
-          }
-        }
-      }
-    }
-
-    stage('Quality Gate') {
-      steps {
-        timeout(time: 10, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
-    }
-
-    stage('Package artifact') {
-      steps {
-        archiveArtifacts artifacts: "${APP_DIR}/build/**", fingerprint: true
-        archiveArtifacts artifacts: "${APP_DIR}/coverage/**", allowEmptyArchive: true
-      }
-    }
-
-    stage('Deploy') {
-      when { expression { env.PIPE_BRANCH == 'QA' || env.PIPE_BRANCH == 'PROD' } }
-      steps {
-        script {
-          def deployPath = (env.PIPE_BRANCH == 'PROD') ? 'C:\\deploy\\frontend' : 'C:\\deploy\\frontend-qa'
-          bat "if not exist \"${deployPath}\" mkdir \"${deployPath}\""
-          bat "xcopy /E /I /Y \"${env.WORKSPACE}\\${APP_DIR}\\build\" \"${deployPath}\""
-          echo "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Desplegado a ${deployPath}"
-        }
-      }
-    }
-  }
-
-  post {
-    always {
-      echo "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Fin | Rama: ${env.PIPE_BRANCH} | Build: #${env.BUILD_NUMBER}"
-    }
-  }
-}
